@@ -20,7 +20,8 @@ COPY python-requirements.txt python-requirements.txt
 RUN pip3 install -r python-requirements.txt
 
 
-RUN echo 'source "/opt/ros/humble/setup.bash" --' >> ~/.bashrc
+RUN echo 'source "/opt/ros/humble/setup.bash" --' >> ~/.bashrc && \
+    echo 'cd rb_ws' >> ~/.bashrc
 # RUN 	echo 'source "/opt/ros/humble/setup.bash" --' >> ~/.bashrc && \
 #     echo 'cd rb_ws' >> ~/.bashrc && \
 #     echo 'catkin_make >/dev/null' >> ~/.bashrc && \
