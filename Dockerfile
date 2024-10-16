@@ -21,7 +21,9 @@ RUN pip3 install -r python-requirements.txt
 
 
 RUN echo 'source "/opt/ros/humble/setup.bash" --' >> ~/.bashrc && \
-    echo 'cd rb_ws' >> ~/.bashrc
+    echo 'cd rb_ws' >> ~/.bashrc && \
+    echo 'colcon build --symlink-install' >> ~/.bashrc && \
+    echo 'source install/local_setup.bash' >> ~/.bashrc
 # RUN 	echo 'source "/opt/ros/humble/setup.bash" --' >> ~/.bashrc && \
 #     echo 'cd rb_ws' >> ~/.bashrc && \
 #     echo 'catkin_make >/dev/null' >> ~/.bashrc && \
