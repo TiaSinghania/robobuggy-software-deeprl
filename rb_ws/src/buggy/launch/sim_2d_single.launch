@@ -1,4 +1,0 @@
-<launch>
-    <node name="foxglove" pkg="foxglove_bridge" type="foxglove_bridge" />
-    <node name="hello_world" pkg="buggy" type="hello_world" />
-
