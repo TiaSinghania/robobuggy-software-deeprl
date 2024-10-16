@@ -1,0 +1,13 @@
+matplotlib
+NavPy
+numba
+numpy
+osqp
+pandas
+pymap3d
+scipy
+setuptools==58.2.0
+trimesh
+utm
+keyboard
+tk
