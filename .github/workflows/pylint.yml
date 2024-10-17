@@ -31,5 +31,5 @@ jobs:
           echo "No files to lint"
         else
           echo "Running Linter!"
-          pylint --rc-file=/home/runner/work/RoboBuggy2/RoboBuggy2/.github/workflows/.pylintrc $tmp_pfiles
+          pylint --rc-file=/home/runner/work/robobuggy-software/robobuggy-software/.github/workflows/.pylintrc $tmp_pfiles
         fi
