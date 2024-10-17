@@ -1,10 +1,13 @@
-# robobuggy-software
-A complete re-write of the old RoboBuggy2. This code was run for RD25, on both NAND and Short Circuit.
+# RoboBuggy2
+A complete re-write of the old RoboBuggy. This code was run for RD23, RD24 and RD25, on both NAND and Short Circuit.
 
 
 ## Table of Contents
  - Installation and Initial Setup
  - Launching Code
+ - Infrastructure Documentation
+ - Code Structure and Documentation
+
 
 ---
 ## Installation and Initial Setup
@@ -28,24 +31,34 @@ A complete re-write of the old RoboBuggy2. This code was run for RD25, on both N
 - https://git-scm.com/downloads
 
 ### Install Softwares: WSL, Ubuntu (Windows only)
-- Go to Microsoft Store to install "Ubuntu 22.04 LTS".
+- Go to Microsoft Store to install "Ubuntu 20.04.6 LTS".
+
+### Set up repo in WSL
+- To set up ssh key, follow this link: [Connecting to GitHub with SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh).
+- Note: Ensure that the SSH keys are generated while in the WSL terminal
+- In the website above, see these two pages: [Generating a new SSH key and adding it to the ssh-agent](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) and ["Adding a new SSH key to your GitHub account"](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
 
 
 ### Apple Silicon Mac Only:
 - In Docker Desktop App: go to settings -> general and turn on "Use Rosetta for x86/amd64 emulation on Apple Silicon"
 
+### Set up repository
+- To set up ssh key, follow this link: [Connecting to GitHub with SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh).
+- Note: Ensure that the SSH keys are generated while in the terminal
+- In the website above, see these two pages: [Generating a new SSH key and adding it to the ssh-agent](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) and ["Adding a new SSH key to your GitHub account"](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
+
 
 ### Clone the Repository
 This is so you can edit our codebase locally, and sync your changes with the rest of the team through Git.
-- In your terminal type: `$ git clone https://github.com/CMU-Robotics-Club/robobuggy-software.git`.
+- In your terminal type: `$ git clone https://github.com/CMU-Robotics-Club/RoboBuggy2.git`.
 - The clone link above is the URL or can be found above: code -> local -> Clone HTTPS.
 
 
-### Foxglove Visualization (WIP)
+### Foxglove Visualization
 - Foxglove is used to visualize both the simulator and the actual buggy's movements.
 - First, you need to import the layout definition into Foxglove. On the top bar, click Layout, then "Import from file".
 - ![image](https://github.com/CMU-Robotics-Club/RoboBuggy2/assets/116482510/2aa04083-46b3-42a5-bcc1-99cf7ccdb3d2)
-- Go to repository and choose the file [telematics layout](telematics_layout.json)
+- Go to RoboBuggy2 and choose the file [telematics layout](telematics_layout.json)
 - To visualize the simulator, launch the simulator and then launch Foxglove and select "Open Connection" on startup.
 - Use this address `ws://localhost:8765` for Foxglove Websocket
 - Open Foxglove, choose the third option "start link".
@@ -64,9 +77,9 @@ This is so you can edit our codebase locally, and sync your changes with the res
 
 ## Launching Code
 ### Open Docker
-- Use `cd` to change the working directory to be `robobuggy-software`
+- Use `cd` to change the working directory to be `RoboBuggy2`
 - Then do `./setup_dev.sh` in the main directory (RoboBuggy2) to launch the docker container. Utilize the `--no-gpu`, `--force-gpu`, and `--run-testing` flags as necessary.
-- Then you can go in the docker container using the `docker exec -it robobuggy-software-main-1 bash`.
+- Then you can go in the docker container using the `docker exec -it robobuggy2-main-1 bash`.
 - When you are done, type Ctrl+C and use `$exit` to exit.
 
 ### ROS
@@ -76,7 +89,7 @@ This is so you can edit our codebase locally, and sync your changes with the res
         source /rb_ws/devel/setup.bash  # sets variables so that our package is visible to ROS commands
 - To learn ROS on your own, follow the guide on https://wiki.ros.org/ROS/Tutorials.
 
-### 2D Simulation (WIP - Doesn't Exist)
+### 2D Simulation
 - Boot up the docker container
 - Run `roslaunch buggy sim_2d_single.launch` to simulate 1 buggy
 - See `rb_ws/src/buggy/launch/sim_2d_single.launch` to view all available launch options
@@ -114,3 +127,18 @@ When shutting down the buggy:
 `$ exit`
 -	Shutdown the ShortCircuit computer
 `$ sudo shutdown now`
+
+## Documentation
+### Infrastructure Documentation
+Ask Software Lead (WIP)
+
+### Simulator notes
+- Longitude + Latitude for Foxglove visualization on map: `/state/pose_navsat` (sensor_msgs/NavSatFix)
+- UTM coordinates (assume we're in Zone 17N): `/sim_2d/utm` (geometry_msgs/Pose - position.x = Easting meters , position.y = Northing meters, position.z = heading in degrees from East axis + is CCW)
+- INS Simulation: `/nav/odom` (nsg_msgs/Odometry) (**Noise** is implemented to vary ~1cm)
+Commands:
+- Steering angle: `/buggy/steering` in degrees (std_msgs/Float64)
+- Velocity: `/buggy/velocity` in m/s (std_msgs/Float64)
+
+### Auton Logic
+Ask someone with experience (WIP)
