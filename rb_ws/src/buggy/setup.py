@@ -25,6 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'hello_world = buggy.hello_world:main'
+            'sim-single = buggy.engine:main'
+
         ],
     },
 )
