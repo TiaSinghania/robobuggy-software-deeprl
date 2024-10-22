@@ -2,26 +2,31 @@
 import sys
 import time
 import rclpy
-from rclpy.node import Node
+from std_msgs.msg import String
 
-class Simulator(Node):
+class Simulator():
     # simulator constants:
 
     def __init__(self):
+        self.test_publisher = self.create_publisher(String, 'test', 10)
         if (self.get_namespace() == "SC"):
             self.buggy_name = "SC"
+
         if (self.get_namespace() == "NAND"):
             self.buggy_name = "NAND"
 
-    if __name__ == "__main__":
-        rclpy.init()
-        sim = Simulator()
-        rclpy.spin(sim)
+    def loop(self):
+        print("hello")
+        self.test_publisher.publish(self.buggy_name)
 
-        # publish initial position, then sleep
-        # so that auton stack has time to initialize
-        # before buggy moves
-        time.sleep(15.0)
-        sim.loop()
+if __name__ == "__main__":
+    rclpy.init()
+    sim = Simulator()
+
+    # publish initial position, then sleep
+    # so that auton stack has time to initialize
+    # before buggy moves
+    time.sleep(15.0)
+    sim.loop()
 
 
