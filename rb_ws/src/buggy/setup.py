@@ -13,7 +13,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        (os.path.join("share", package_name), glob("launch/*.xml")),
+        (os.path.join("share", package_name), glob("launch/*.xml"))
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,9 +24,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'hello_world = buggy.hello_world:main'
-            'sim-single = buggy.engine:main'
-
+            'hello_world = buggy.hello_world:main',
+            'sim_single = buggy.simulator.engine:main'
         ],
     },
 )

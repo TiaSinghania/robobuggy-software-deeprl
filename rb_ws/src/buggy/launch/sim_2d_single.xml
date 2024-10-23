@@ -1,9 +1,9 @@
 <launch>
     <node pkg="foxglove_bridge" exec="foxglove_bridge" name="foxglove" namespace="SC"/>
-    <node pkg="buggy" exec="hello_world" name="hello_world" namespace="SC"/>
-    <node pkg="buggy" exec="sim-single" name="SC-sim-single" namespace="SC"/>
-    <node pkg="buggy" exec="sim-single" name="NAND-sim-single" namespace="NAND"/>
+    <node pkg="buggy" exec="hello_world" name="hello_world" namespace="SC" />
+    <node pkg="buggy" exec="sim_single" name="SC_sim_single" namespace="SC"/>
+    <node pkg="buggy" exec="sim_single" name="NAND_sim_single" namespace="NAND"/>
 
-    <!-- <node name="foxglove" pkg="foxglove_bridge" type="foxglove_bridge" /> -->
-    <!-- <node name="hello_world" pkg="buggy" type="hello_world" /> -->
+    <!-- <node name="foxglove" pkg="foxglove_bridge" type="foxglove_bridge" />
+    <node name="hello_world" pkg="buggy" type="hello_world" /> -->
 </launch>
