@@ -24,7 +24,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'hello_world = buggy.hello_world:main'
+            'hello_world = buggy.hello_world:main',
+            'watchdog = buggy.watchdog.watchdog_node:main'
         ],
     },
 )
