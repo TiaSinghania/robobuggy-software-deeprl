@@ -14,13 +14,19 @@ class Watchdog(Node):
         
         """
         super().__init__('watchdog')
+        
+        # Publishers
         self.heartbeat_publisher = self.create_publisher(Bool, 'self/debug/heartbeat', 1)
-        timer_period = 0.01  # seconds (10 Hz)
+
+        # Subscribers
+        self.heartbeat_subscriber = self.create_subscription(Bool, 'self/debug/heartbeat', self.heartbeat_listener, 1)
+
+        timer_period = 0.01  # seconds (100 Hz)
         self.timer = self.create_timer(timer_period, self.loop)
         self.i = 0 # Loop Counter
 
     def loop(self):
-        # Loop for the code that operates at 0.1 Hz
+        # Loop for the code that operates every 10ms
         msg = Bool()
         msg.data = True
         self.heartbeat_publisher.publish(msg) 
