@@ -14,7 +14,7 @@ class Watchdog(Node):
         
         """
         super().__init__('watchdog')
-        
+
         # Publishers
         self.heartbeat_publisher = self.create_publisher(Bool, 'self/debug/heartbeat', 1)
 
@@ -29,7 +29,7 @@ class Watchdog(Node):
         # Loop for the code that operates every 10ms
         msg = Bool()
         msg.data = True
-        self.heartbeat_publisher.publish(msg) 
+        self.heartbeat_publisher.publish(msg)
 
     def heartbeat_listener(self, msg : Node):
         """
