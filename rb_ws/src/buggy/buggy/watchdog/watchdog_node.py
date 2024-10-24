@@ -25,18 +25,27 @@ class Watchdog(Node):
         msg.data = True
         self.heartbeat_publisher.publish(msg) 
 
+    def heartbeat_listener(self, msg : Node):
+        """
+        Subscriber Function that checks if Heartbeat is ever alse
+        It never actually is false, this is just a demonstration of a subscriber
+        If it ever actually is false, something cursed has happened
+        """
+        if msg.data == False:
+            self.get_logger().error("Hearbeat Failed!")
+
 
 def main(args=None):
     rclpy.init(args=args)
 
-    minimal_publisher = Watchdog()
+    watchdog = Watchdog()
 
-    rclpy.spin(minimal_publisher)
+    rclpy.spin(watchdog)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    minimal_publisher.destroy_node()
+    watchdog.destroy_node()
     rclpy.shutdown()
 
 
