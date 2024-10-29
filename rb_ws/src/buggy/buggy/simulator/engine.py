@@ -13,16 +13,17 @@ import utm
 
 class Simulator(Node):
     # simulator constants:
+    UTM_EAST_ZERO = 589702.87
+    UTM_NORTH_ZERO = 4477172.947
+    UTM_ZONE_NUM = 17
+    UTM_ZONE_LETTER = "T"
+    #TODO: make these values accurate
+    WHEELBASE_SC = 1.17
+    WHEELBASE_NAND= 1.17
 
     def __init__(self):
         super().__init__('sim_single')
-        UTM_EAST_ZERO = 589702.87
-        UTM_NORTH_ZERO = 4477172.947
-        UTM_ZONE_NUM = 17
-        UTM_ZONE_LETTER = "T"
-        #TODO: make these values accurate
-        WHEELBASE_SC = 1.17
-        WHEELBASE_NAND= 1.17
+        self.get_logger().info('INITIALIZED.')
 
         self.starting_poses = {
             "Hill1_NAND": (Simulator.UTM_EAST_ZERO + 0, Simulator.UTM_NORTH_ZERO + 0, -110),
@@ -60,12 +61,14 @@ class Simulator(Node):
         )
         if (self.get_namespace() == "/SC"):
             self.buggy_name = "SC"
-            init_pose = self.starting_poses["Hill_1SC"]
-
+            init_pose = self.starting_poses["Hill1_SC"]
+            self.wheelbase = Simulator.WHEELBASE_SC
 
         if (self.get_namespace() == "/NAND"):
             self.buggy_name = "NAND"
-            init_pose = self.starting_poses["Hill_1NAND"]
+            init_pose = self.starting_poses["Hill1_NAND"]
+            self.wheelbase = Simulator.WHEELBASE_NAND
+
 
         self.e_utm, self.n_utm, self.heading = init_pose
         # TODO: do we want to not hard code this
@@ -73,6 +76,7 @@ class Simulator(Node):
         self.steering_angle = 0  # degrees
         self.rate = 200  # Hz
         self.pub_skip = 2  # publish every pub_skip ticks
+        self.pub_tick_count = 0
 
         self.lock = threading.Lock()
 
@@ -97,7 +101,7 @@ class Simulator(Node):
         return Simulator.WHEELBASE / np.tan(np.deg2rad(steering_angle))
 
     def dynamics(self, state, v):
-        l = Simulator.WHEELBASE
+        l = self.wheelbase
         _, _, theta, delta = state
 
         return np.array([v * np.cos(theta),
@@ -151,32 +155,30 @@ class Simulator(Node):
         nsf = NavSatFix()
         nsf.latitude = lat
         nsf.longitude = long
-        nsf.altitude = 260
+        nsf.altitude = float(260)
         nsf.header.stamp = time_stamp
-        self.navsatfix_publisher.publish(nsf)
 
-        if Simulator.NOISE:
-            lat_noisy = lat + np.random.normal(0, 1e-6)
-            long_noisy = long + np.random.normal(0, 1e-6)
-            nsf_noisy = NavSatFix()
-            nsf_noisy.latitude = lat_noisy
-            nsf_noisy.longitude = long_noisy
-            nsf_noisy.header.stamp = time_stamp
-            self.navsatfix_noisy_publisher.publish(nsf_noisy)
+        lat_noisy = lat + np.random.normal(0, 1e-6)
+        long_noisy = long + np.random.normal(0, 1e-6)
+        nsf_noisy = NavSatFix()
+        nsf_noisy.latitude = lat_noisy
+        nsf_noisy.longitude = long_noisy
+        nsf_noisy.header.stamp = time_stamp
+        self.navsatfix_noisy_publisher.publish(nsf_noisy)
 
         odom = Odometry()
         odom.header.stamp = time_stamp
 
         odom_pose = Pose()
-        odom_pose.position.x = long
-        odom_pose.position.y = lat
-        odom_pose.position.z = 260
+        odom_pose.position.x = float(long)
+        odom_pose.position.y = float(lat)
+        odom_pose.position.z = float(260)
 
         odom_pose.orientation.z = np.sin(np.deg2rad(self.heading) / 2)
         odom_pose.orientation.w = np.cos(np.deg2rad(self.heading) / 2)
 
         odom_twist = Twist()
-        odom_twist.linear.x = velocity
+        odom_twist.linear.x = float(velocity)
 
         odom.pose = PoseWithCovariance(pose=odom_pose)
         odom.twist = TwistWithCovariance(twist=odom_twist)
@@ -184,16 +186,19 @@ class Simulator(Node):
         self.pose_publisher.publish(odom)
 
     def loop(self):
-        rate = self.create_rate(self.rate)
-        pub_tick_count = 0
+        msg = Float64()
+        msg.data = float(self.i)
+
+        self.number_publisher.publish(msg)
+        self.i += 1
 
         self.step()
-
-        if pub_tick_count == self.pub_skip:
+        if self.pub_tick_count == self.pub_skip:
             self.publish()
-            pub_tick_count = 0
+            self.pub_tick_count = 0
         else:
-            pub_tick_count += 1
+            self.pub_tick_count += 1
+
 
 
 
