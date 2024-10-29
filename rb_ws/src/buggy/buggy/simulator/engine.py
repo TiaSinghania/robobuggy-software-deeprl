@@ -25,6 +25,7 @@ class Simulator(Node):
         super().__init__('sim_single')
         self.get_logger().info('INITIALIZED.')
 
+
         self.starting_poses = {
             "Hill1_NAND": (Simulator.UTM_EAST_ZERO + 0, Simulator.UTM_NORTH_ZERO + 0, -110),
             "Hill1_SC": (Simulator.UTM_EAST_ZERO + 20, Simulator.UTM_NORTH_ZERO + 30, -110),
@@ -59,20 +60,27 @@ class Simulator(Node):
         self.navsatfix_noisy_publisher = self.create_publisher(
                 NavSatFix, "state/pose_navsat_noisy", 1
         )
+
+
+
+
+
+        self.declare_parameter('velocity', 12)
         if (self.get_namespace() == "/SC"):
             self.buggy_name = "SC"
-            init_pose = self.starting_poses["Hill1_SC"]
+            self.declare_parameter('pose', "Hill1_SC")
             self.wheelbase = Simulator.WHEELBASE_SC
 
         if (self.get_namespace() == "/NAND"):
             self.buggy_name = "NAND"
-            init_pose = self.starting_poses["Hill1_NAND"]
+            self.declare_parameter('pose', "Hill1_NAND")
             self.wheelbase = Simulator.WHEELBASE_NAND
 
+        self.velocity = self.get_parameter("velocity").value
+        init_pose_name = self.get_parameter("pose").value
+        self.init_pose = self.starting_poses[init_pose_name]
 
-        self.e_utm, self.n_utm, self.heading = init_pose
-        # TODO: do we want to not hard code this
-        self.velocity = 12 # m/s
+        self.e_utm, self.n_utm, self.heading = self.init_pose
         self.steering_angle = 0  # degrees
         self.rate = 200  # Hz
         self.pub_skip = 2  # publish every pub_skip ticks
