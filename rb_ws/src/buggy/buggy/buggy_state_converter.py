@@ -29,8 +29,8 @@ class BuggyStateConverter(Node):
 
         # Initialize pyproj Transformer for ECEF -> UTM conversion for /SC
         self.ecef_to_utm_transformer = pyproj.Transformer.from_crs(
-            "epsg:4978", "epsg:32633", always_xy=True
-        )  # Update EPSG if required
+            "epsg:4978", "epsg:32617", always_xy=True
+        )  # Check UTM EPSG code, using EPSG:32617 for UTM Zone 17N
 
     def self_raw_state_callback(self, msg):
         """ Callback for processing self/raw_state messages and publishing to self/state """
