@@ -1,6 +1,4 @@
 #! /usr/bin/env python3
-import re
-import sys
 import threading
 import rclpy
 from rclpy.node import Node
