@@ -25,7 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'hello_world = buggy.hello_world:main',
-            'sim_single = buggy.simulator.engine:main'
+            'sim_single = buggy.simulator.engine:main',
+            'watchdog = buggy.watchdog.watchdog_node:main'
         ],
     },
 )
