@@ -74,13 +74,14 @@ class BuggyStateConverter(Node):
         yaw = self.quaternion_to_yaw(qx, qy, qz, qw)
         converted_msg.pose.pose.orientation.x = yaw
         # ignored:
-        # converted_msg.pose.pose.orientation.y = qy
-        # converted_msg.pose.pose.orientation.z = qz
-        # converted_msg.pose.pose.orientation.w = qw
+        converted_msg.pose.pose.orientation.y = 0.0
+        converted_msg.pose.pose.orientation.z = 0.0
+        converted_msg.pose.pose.orientation.w = 0.0
 
         # ---- 3. Copy Covariances (Unchanged) ----
-        converted_msg.pose.covariance = msg.pose.covariance
-        converted_msg.twist.covariance = msg.twist.covariance
+        # TODO: check whether covariances should be copied over or not sent at all
+        # converted_msg.pose.covariance = msg.pose.covariance
+        # converted_msg.twist.covariance = msg.twist.covariance
 
         # ---- 4. Copy Linear Velocities ----
         converted_msg.twist.twist.linear.x = msg.twist.twist.linear.x   # m/s in x-direction
@@ -107,16 +108,17 @@ class BuggyStateConverter(Node):
         # ---- 2. Orientation in Radians with 0 at East ----
         converted_msg.pose.pose.orientation.x = msg.pose.pose.orientation.x
         # ignored:
-        # converted_msg.pose.pose.orientation.y = msg.pose.pose.orientation.y
-        # converted_msg.pose.pose.orientation.z = msg.pose.pose.orientation.z
-        # converted_msg.pose.pose.orientation.w = msg.pose.pose.orientation.w
+        converted_msg.pose.pose.orientation.y = 0.0
+        converted_msg.pose.pose.orientation.z = 0.0
+        converted_msg.pose.pose.orientation.w = 0.0
 
         # ---- 3. Copy Covariances (Unchanged) ----
-        converted_msg.pose.covariance = msg.pose.covariance
-        converted_msg.twist.covariance = msg.twist.covariance
+        # TODO: check whether covariances should be copied over or not sent at all
+        # converted_msg.pose.covariance = msg.pose.covariance
+        # converted_msg.twist.covariance = msg.twist.covariance
 
         # ---- 4. Copy Linear Velocities ----
-        # CHECK: ROS serial translator node must change scalar speed to velocity x/y components before pushing to raw_state
+        # TODO: check that ROS serial translator node changes scalar speed to velocity x/y components before pushing to raw_state
         converted_msg.twist.twist.linear.x = msg.twist.twist.linear.x   # m/s in x-direction
         converted_msg.twist.twist.linear.y = msg.twist.twist.linear.y   # m/s in y-direction
         converted_msg.twist.twist.linear.z = msg.twist.twist.linear.z   # Keep original Z velocity (??)
@@ -131,7 +133,8 @@ class BuggyStateConverter(Node):
     def quaternion_to_yaw(self, qx, qy, qz, qw):
         """Convert a quaternion to yaw (heading) in radians."""
         siny_cosp = 2.0 * (qw * qz + qx * qy)
-        cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+        cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)   # assumes quaternion is normalized, should be true in ROS,
+                                                      # else use (qw * qw + qx * qx - qy * qy - qz * qz)
         return np.arctan2(siny_cosp, cosy_cosp)
 
 
