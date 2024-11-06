@@ -9,6 +9,7 @@ pyproj
 rclpy
 scipy
 setuptools==58.2.0
+tf_transformations
 trimesh
 utm
 keyboard

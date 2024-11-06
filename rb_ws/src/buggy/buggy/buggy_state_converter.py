@@ -5,7 +5,7 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 import numpy as np
 import pyproj
-
+from tf_transformations import euler_from_quaternion
 
 class BuggyStateConverter(Node):
     def __init__(self):
@@ -70,9 +70,19 @@ class BuggyStateConverter(Node):
         converted_msg.pose.pose.position.z = 0.0    # ignored
 
         # ---- 2. Convert Quaternion to Heading (Radians) ----
+
         qx, qy, qz, qw = msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w
-        yaw = self.quaternion_to_yaw(qx, qy, qz, qw)
-        converted_msg.pose.pose.orientation.x = yaw
+
+        # replaced with tf_transformations library function
+        # yaw = self.quaternion_to_yaw(qx, qy, qz, qw)
+        # converted_msg.pose.pose.orientation.x = yaw
+
+        # Use euler_from_quaternion to get roll, pitch, yaw
+        _, _, yaw = euler_from_quaternion([qx, qy, qz, qw])
+        yaw_aligned_east = yaw - np.pi / 2   # TODO: check if 0 is East
+        # Store the heading in the x component of the orientation
+        converted_msg.pose.pose.orientation.x = yaw_aligned_east
+
         # ignored:
         converted_msg.pose.pose.orientation.y = 0.0
         converted_msg.pose.pose.orientation.z = 0.0
@@ -130,6 +140,7 @@ class BuggyStateConverter(Node):
 
         return converted_msg
 
+    # replaced custom function with tf_transformations library function
     def quaternion_to_yaw(self, qx, qy, qz, qw):
         """Convert a quaternion to yaw (heading) in radians."""
         siny_cosp = 2.0 * (qw * qz + qx * qy)
