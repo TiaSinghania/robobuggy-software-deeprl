@@ -60,7 +60,7 @@ class BuggyStateConverter(Node):
         Takes in ROS message in nav_msgs/Odometry format
         Assumes that the SC namespace is using ECEF coordinates and quaternion orientation
         """
-        
+
         converted_msg = Odometry()
         converted_msg.header = msg.header
 
@@ -144,7 +144,7 @@ class BuggyStateConverter(Node):
         converted_msg.twist.twist.angular.z = msg.twist.twist.angular.z   # rad/s, heading change rate
 
         return converted_msg
-    
+
     def convert_NAND_other_state(self, msg):
         """ Converts other/raw_state in SC namespace (NAND data) to clean state units and structure """
         converted_msg = Odometry()
