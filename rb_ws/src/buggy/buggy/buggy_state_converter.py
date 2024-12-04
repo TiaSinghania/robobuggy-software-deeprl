@@ -5,7 +5,7 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 import numpy as np
 import pyproj
-from tf_transformations import euler_from_quaternion
+from scipy.spatial.transform import Rotation
 
 class BuggyStateConverter(Node):
     def __init__(self):
@@ -78,8 +78,9 @@ class BuggyStateConverter(Node):
         # ---- 2. Convert Quaternion to Heading (Radians) ----
         qx, qy, qz, qw = msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w
 
-        # Use euler_from_quaternion to get roll, pitch, yaw
-        roll, pitch, yaw = euler_from_quaternion([qx, qy, qz, qw])
+        # Use Rotation.from_quat to get roll, pitch, yaw
+        roll, pitch, yaw = Rotation.from_quat([qx, qy, qz, qw]).as_euler('xyz');
+        # roll, pitch, yaw = euler_from_quaternion([qx, qy, qz, qw])  # tf_transformations bad
 
         # Store the heading in the x component of the orientation
         converted_msg.pose.pose.orientation.x = roll
