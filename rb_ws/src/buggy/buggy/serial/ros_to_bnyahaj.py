@@ -4,13 +4,12 @@ import threading
 
 import rclpy
 from rclpy import Node
+from scipy.spatial.transform import Rotation as R
+import utm
 
 from std_msgs.msg import Float64, Int8, UInt8, Bool
 
 from host_comm import *
-
-from buggy.auton.world import World
-from buggy.auton.pose import Pose
 
 from nav_msgs.msg import Odometry as ROSOdom
 
@@ -122,10 +121,11 @@ class Translator(Node):
         """
         self.get_logger().info("Starting sending alarm and steering to teensy!")
 
-        while not self.is_shutdown():
+        while rclpy.ok():
             if self.fresh_steer:
                 with self.lock:
                     self.comms.send_steering(self.steer_angle)
+                    self.get_logger().debug(f"Sent steering angle of: {self.steer_angle}")
                     self.fresh_steer = False
 
             with self.lock:
@@ -143,14 +143,14 @@ class Translator(Node):
         self.get_logger().info("Starting reading odom from teensy!")
         while rclpy.ok():
             packet = self.comms.read_packet()
+            self.get_logger().debug("packet" + str(packet))
 
             if isinstance(packet, Odometry):
-                self.get_logger().debug("packet" + str(packet))
                 # Publish to odom topic x and y coord
                 odom = ROSOdom()
                 # convert to long lat
                 try:
-                    lat, long = World.utm_to_gps(packet.y, packet.x)
+                    lat, long = utm.to_latlon(packet.x, packet.y, 17, "T")
                     odom.pose.pose.position.x = long
                     odom.pose.pose.position.y = lat
                     self.odom_publisher.publish(odom)
@@ -160,16 +160,15 @@ class Translator(Node):
                     )
 
             elif isinstance(packet, BnyaTelemetry):
-                self.get_logger().debug("packet" + str(packet))
                 odom = ROSOdom()
 
                 # TODO: Not mock rolled accurately (Needs to be Fact Checked)
                 try:
-                    lat, long = World.utm_to_gps(packet.x, packet.y)
+                    lat, long = utm.to_latlon(packet.x, packet.y, 17, "T")
                     odom.pose.pose.position.x = long
                     odom.pose.pose.position.y = lat
                     odom.twist.twist.angular.z = packet.heading_rate
-                    heading = Pose.heading_to_quaternion(packet.heading)
+                    heading = R.from_euler('x', packet.heading, degrees=False).as_quat()
 
                     odom.pose.pose.orientation.x = heading[0]
                     odom.pose.pose.orientation.y = heading[1]
@@ -191,15 +190,15 @@ class Translator(Node):
             elif isinstance(
                     packet, tuple
             ):  # Are there any other packet that is a tuple
-                self.rc_steering_angle_publisher.publish(Float64(packet[0]))
-                self.steering_angle_publisher.publish(Float64(packet[1]))
-                self.battery_voltage_publisher.publish(Float64(packet[2]))
-                self.operator_ready_publisher.publish(Bool(packet[3]))
-                self.steering_alarm_publisher.publish(Bool(packet[4]))
-                self.brake_status_publisher.publish(Bool(packet[5]))
-                self.use_auton_steer_publisher.publish(Bool(packet[6]))
-                self.rc_uplink_qual_publisher.publish(UInt8(packet[7]))
-                self.nand_fix_publisher.publish(UInt8(packet[8]))
+                self.rc_steering_angle_publisher.publish(Float64(data=packet[0]))
+                self.steering_angle_publisher.publish(Float64(data=packet[1]))
+                self.battery_voltage_publisher.publish(Float64(data=packet[2]))
+                self.operator_ready_publisher.publish(Bool(data=packet[3]))
+                self.steering_alarm_publisher.publish(Bool(data=packet[4]))
+                self.brake_status_publisher.publish(Bool(data=packet[5]))
+                self.use_auton_steer_publisher.publish(Bool(data=packet[6]))
+                self.rc_uplink_qual_publisher.publish(UInt8(data=packet[7]))
+                self.nand_fix_publisher.publish(UInt8(data=packet[8]))
 
             self.read_rate.sleep()
 
