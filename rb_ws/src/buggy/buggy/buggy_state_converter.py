@@ -11,7 +11,6 @@ class BuggyStateConverter(Node):
     def __init__(self):
         super().__init__("buggy_state_converter")
 
-        # Determine namespace to configure the subscriber and publisher correctly
         namespace = self.get_namespace()
 
         # Create publisher and subscriber for "self" namespace
@@ -21,7 +20,7 @@ class BuggyStateConverter(Node):
         self.self_state_publisher = self.create_publisher(Odometry, "self/state", 10)
 
         # Check if namespace is "SC" to add an "other" subscriber/publisher
-        if namespace == "SC":
+        if namespace == "/SC":
             self.other_raw_state_subscriber = self.create_subscription(
                 Odometry, "other/raw_state", self.other_raw_state_callback, 10
             )
@@ -36,15 +35,14 @@ class BuggyStateConverter(Node):
         """ Callback for processing self/raw_state messages and publishing to self/state """
         namespace = self.get_namespace()
 
-        if namespace == "SC":
+        if namespace == "/SC":
             converted_msg = self.convert_SC_state(msg)
-        elif namespace == "NAND":
+        elif namespace == "/NAND":
             converted_msg = self.convert_NAND_state(msg)
         else:
-            self.get_logger().warn("Namespace not recognized for buggy state conversion.")
+            self.get_logger().warn(f"Namespace not recognized for buggy state conversion: {namespace}")
             return
 
-        # Publish the converted message to self/state
         self.self_state_publisher.publish(converted_msg)
 
     def other_raw_state_callback(self, msg):
@@ -79,7 +77,7 @@ class BuggyStateConverter(Node):
         qx, qy, qz, qw = msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w
 
         # Use Rotation.from_quat to get roll, pitch, yaw
-        roll, pitch, yaw = Rotation.from_quat([qx, qy, qz, qw]).as_euler('xyz');
+        roll, pitch, yaw = Rotation.from_quat([qx, qy, qz, qw]).as_euler('xyz')
         # roll, pitch, yaw = euler_from_quaternion([qx, qy, qz, qw])  # tf_transformations bad
 
         # Store the heading in the x component of the orientation
@@ -154,17 +152,17 @@ class BuggyStateConverter(Node):
         # ---- 1. Directly use UTM Coordinates ----
         converted_msg.pose.pose.position.x = msg.x    # UTM Easting
         converted_msg.pose.pose.position.y = msg.y    # UTM Northing
-        converted_msg.pose.pose.position.z = msg.z    # UTM Altitude -- not provided in other/raw_state
+        converted_msg.pose.pose.position.z = msg.z    # UTM Altitude (not provided in other/raw_state, defaults to 0.0)
 
         # ---- 2. Orientation in Radians ----
-        converted_msg.pose.pose.orientation.x = msg.roll      # roll not provided in other/raw_state
-        converted_msg.pose.pose.orientation.y = msg.pitch     # pitch not provided in other/raw_state
+        converted_msg.pose.pose.orientation.x = msg.roll      # (roll not provided in other/raw_state, defaults to 0.0)
+        converted_msg.pose.pose.orientation.y = msg.pitch     # (pitch not provided in other/raw_state, defaults to 0.0)
         converted_msg.pose.pose.orientation.z = msg.heading   # heading in radians
-        converted_msg.pose.pose.orientation.w = 0.0           # fourth (quaternion) term irrelevant for euler angles
+        converted_msg.pose.pose.orientation.w = 0.0           # fourth quaternion term irrelevant for euler angles
 
         # ---- 3. Copy Covariances (Unchanged) ----
-        converted_msg.pose.covariance = msg.pose_covariance     # not provided in other/raw_state
-        converted_msg.twist.covariance = msg.twist_covariance   # not provided in other/raw_state
+        converted_msg.pose.covariance = msg.pose_covariance     # (not provided in other/raw_state)
+        converted_msg.twist.covariance = msg.twist_covariance   # (not provided in other/raw_state)
 
         # ---- 4. Linear Velocities in m/s ----
         # Convert scalar speed to velocity x/y components using heading (msg.heading)
@@ -177,8 +175,8 @@ class BuggyStateConverter(Node):
         converted_msg.twist.twist.linear.z = 0.0
 
         # ---- 5. Angular Velocities ----
-        converted_msg.twist.twist.angular.x = msg.roll_rate      # roll rate not provided in other/raw_state
-        converted_msg.twist.twist.angular.y = msg.pitch_rate     # pitch rate not provided in other/raw_state
+        converted_msg.twist.twist.angular.x = msg.roll_rate      # (roll rate not provided in other/raw_state, defaults to 0.0)
+        converted_msg.twist.twist.angular.y = msg.pitch_rate     # (pitch rate not provided in other/raw_state, defaults to 0.0)
         converted_msg.twist.twist.angular.z = msg.heading_rate   # rad/s, heading change rate
 
         return converted_msg
