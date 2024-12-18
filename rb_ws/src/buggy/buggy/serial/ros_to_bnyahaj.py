@@ -4,7 +4,7 @@ import threading
 
 import rclpy
 from rclpy import Node
-from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Rotation
 import utm
 
 from std_msgs.msg import Float64, Int8, UInt8, Bool
@@ -150,7 +150,8 @@ class Translator(Node):
                 odom = ROSOdom()
                 # convert to long lat
                 try:
-                    lat, long = utm.to_latlon(packet.x, packet.y, 17, "T")
+                    # TODO check if the order of y and x here is accurate
+                    lat, long = utm.to_latlon(packet.y, packet.x, 17, "T")
                     odom.pose.pose.position.x = long
                     odom.pose.pose.position.y = lat
                     self.odom_publisher.publish(odom)
@@ -168,7 +169,7 @@ class Translator(Node):
                     odom.pose.pose.position.x = long
                     odom.pose.pose.position.y = lat
                     odom.twist.twist.angular.z = packet.heading_rate
-                    heading = R.from_euler('x', packet.heading, degrees=False).as_quat()
+                    heading = Rotation.from_euler('x', packet.heading, degrees=False).as_quat()
 
                     odom.pose.pose.orientation.x = heading[0]
                     odom.pose.pose.orientation.y = heading[1]
