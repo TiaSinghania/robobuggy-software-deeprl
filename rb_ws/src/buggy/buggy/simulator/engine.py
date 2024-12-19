@@ -8,25 +8,17 @@ from sensor_msgs.msg import NavSatFix
 from nav_msgs.msg import Odometry
 import numpy as np
 import utm
+from util import Utils
 
 class Simulator(Node):
-    # simulator constants:
-    UTM_EAST_ZERO = 589702.87
-    UTM_NORTH_ZERO = 4477172.947
-    UTM_ZONE_NUM = 17
-    UTM_ZONE_LETTER = "T"
-    #TODO: make these values accurate
-    WHEELBASE_SC = 1.17
-    WHEELBASE_NAND= 1.17
 
     def __init__(self):
         super().__init__('sim_single')
         self.get_logger().info('INITIALIZED.')
 
-
         self.starting_poses = {
-            "Hill1_NAND": (Simulator.UTM_EAST_ZERO + 0, Simulator.UTM_NORTH_ZERO + 0, -110),
-            "Hill1_SC": (Simulator.UTM_EAST_ZERO + 20, Simulator.UTM_NORTH_ZERO + 30, -110),
+            "Hill1_NAND": (Utils.UTM_EAST_ZERO + 0, Utils.UTM_NORTH_ZERO + 0, -110),
+            "Hill1_SC": (Utils.UTM_EAST_ZERO + 20, Utils.UTM_NORTH_ZERO + 30, -110),
             "WESTINGHOUSE": (589647, 4477143, -150),
             "UC_TO_PURNELL": (589635, 4477468, 160),
             "UC": (589681, 4477457, 160),
@@ -39,9 +31,6 @@ class Simulator(Node):
             "RACELINE_PASS": (589468.02, 4476993.07, -160),
         }
 
-        self.number_publisher = self.create_publisher(Float64, 'numbers', 1)
-        self.i = 0
-
         # for X11 matplotlib (direction included)
         self.plot_publisher = self.create_publisher(Pose, "sim_2d/utm", 1)
 
@@ -51,43 +40,43 @@ class Simulator(Node):
         self.steering_subscriber = self.create_subscription(
             Float64, "buggy/input/steering", self.update_steering_angle, 1
         )
-        # To read from velocity
-        self.velocity_subscriber = self.create_subscription(
-            Float64, "velocity", self.update_velocity, 1
-        )
+
         self.navsatfix_noisy_publisher = self.create_publisher(
                 NavSatFix, "state/pose_navsat_noisy", 1
         )
 
-
-
+        # To read from velocity
+        self.velocity_subscriber = self.create_subscription(
+            Float64, "velocity", self.update_velocity, 1
+        )
 
 
         self.declare_parameter('velocity', 12)
+
         if (self.get_namespace() == "/SC"):
             self.buggy_name = "SC"
             self.declare_parameter('pose', "Hill1_SC")
-            self.wheelbase = Simulator.WHEELBASE_SC
+            self.wheelbase = Utils.WHEELBASE_SC
 
         if (self.get_namespace() == "/NAND"):
             self.buggy_name = "NAND"
             self.declare_parameter('pose', "Hill1_NAND")
-            self.wheelbase = Simulator.WHEELBASE_NAND
+            self.wheelbase = Utils.WHEELBASE_NAND
 
         self.velocity = self.get_parameter("velocity").value
         init_pose_name = self.get_parameter("pose").value
+
         self.init_pose = self.starting_poses[init_pose_name]
 
         self.e_utm, self.n_utm, self.heading = self.init_pose
         self.steering_angle = 0  # degrees
-        self.rate = 200  # Hz
-        self.pub_skip = 2  # publish every pub_skip ticks
-        self.pub_tick_count = 0
+        self.rate = 100  # Hz
+        self.tick_count = 0
+        self.interval = 2 # how frequently to publish
 
         self.lock = threading.Lock()
 
-        freq = 10
-        timer_period = 1/freq  # seconds
+        timer_period = 1/self.rate  # seconds
         self.timer = self.create_timer(timer_period, self.loop)
 
     def update_steering_angle(self, data: Float64):
@@ -97,14 +86,6 @@ class Simulator(Node):
     def update_velocity(self, data: Float64):
         with self.lock:
             self.velocity = data.data
-
-    def get_steering_arc(self):
-        with self.lock:
-            steering_angle = self.steering_angle
-        if steering_angle == 0.0:
-            return np.inf
-
-        return Simulator.WHEELBASE / np.tan(np.deg2rad(steering_angle))
 
     def dynamics(self, state, v):
         l = self.wheelbase
@@ -154,18 +135,13 @@ class Simulator(Node):
         (lat, long) = utm.to_latlon(
             p.position.x,
             p.position.y,
-            Simulator.UTM_ZONE_NUM,
-            Simulator.UTM_ZONE_LETTER,
+            Utils.UTM_ZONE_NUM,
+            Utils.UTM_ZONE_LETTER,
         )
-
-        nsf = NavSatFix()
-        nsf.latitude = lat
-        nsf.longitude = long
-        nsf.altitude = float(260)
-        nsf.header.stamp = time_stamp
 
         lat_noisy = lat + np.random.normal(0, 1e-6)
         long_noisy = long + np.random.normal(0, 1e-6)
+
         nsf_noisy = NavSatFix()
         nsf_noisy.latitude = lat_noisy
         nsf_noisy.longitude = long_noisy
@@ -176,8 +152,8 @@ class Simulator(Node):
         odom.header.stamp = time_stamp
 
         odom_pose = Pose()
-        odom_pose.position.x = float(long)
-        odom_pose.position.y = float(lat)
+        odom_pose.position.x = float(long_noisy)
+        odom_pose.position.y = float(lat_noisy)
         odom_pose.position.z = float(260)
 
         odom_pose.orientation.z = np.sin(np.deg2rad(self.heading) / 2)
@@ -192,20 +168,10 @@ class Simulator(Node):
         self.pose_publisher.publish(odom)
 
     def loop(self):
-        msg = Float64()
-        msg.data = float(self.i)
-
-        self.number_publisher.publish(msg)
-        self.i += 1
-
         self.step()
-        if self.pub_tick_count == self.pub_skip:
+        if self.tick_count % self.interval == 0:
             self.publish()
-            self.pub_tick_count = 0
-        else:
-            self.pub_tick_count += 1
-
-
+        self.tick_count += 1
 
 
 def main(args=None):
