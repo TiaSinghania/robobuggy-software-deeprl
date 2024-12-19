@@ -1,4 +1,4 @@
-class Utils:
+class Constants:
     UTM_EAST_ZERO = 589702.87
     UTM_NORTH_ZERO = 4477172.947
     UTM_ZONE_NUM = 17

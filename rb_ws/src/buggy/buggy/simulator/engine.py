@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 import threading
+import sys
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose, Twist, PoseWithCovariance, TwistWithCovariance
@@ -8,17 +9,20 @@ from sensor_msgs.msg import NavSatFix
 from nav_msgs.msg import Odometry
 import numpy as np
 import utm
-from util import Utils
+sys.path.append("/rb_ws/src/buggy/buggy")
+from util import Constants
 
 class Simulator(Node):
+
 
     def __init__(self):
         super().__init__('sim_single')
         self.get_logger().info('INITIALIZED.')
 
+
         self.starting_poses = {
-            "Hill1_NAND": (Utils.UTM_EAST_ZERO + 0, Utils.UTM_NORTH_ZERO + 0, -110),
-            "Hill1_SC": (Utils.UTM_EAST_ZERO + 20, Utils.UTM_NORTH_ZERO + 30, -110),
+            "Hill1_NAND": (Constants.UTM_EAST_ZERO + 0, Constants.UTM_NORTH_ZERO + 0, -110),
+            "Hill1_SC": (Constants.UTM_EAST_ZERO + 20, Constants.UTM_NORTH_ZERO + 30, -110),
             "WESTINGHOUSE": (589647, 4477143, -150),
             "UC_TO_PURNELL": (589635, 4477468, 160),
             "UC": (589681, 4477457, 160),
@@ -56,12 +60,12 @@ class Simulator(Node):
         if (self.get_namespace() == "/SC"):
             self.buggy_name = "SC"
             self.declare_parameter('pose', "Hill1_SC")
-            self.wheelbase = Utils.WHEELBASE_SC
+            self.wheelbase = Constants.WHEELBASE_SC
 
         if (self.get_namespace() == "/NAND"):
             self.buggy_name = "NAND"
             self.declare_parameter('pose', "Hill1_NAND")
-            self.wheelbase = Utils.WHEELBASE_NAND
+            self.wheelbase = Constants.WHEELBASE_NAND
 
         self.velocity = self.get_parameter("velocity").value
         init_pose_name = self.get_parameter("pose").value
@@ -135,8 +139,8 @@ class Simulator(Node):
         (lat, long) = utm.to_latlon(
             p.position.x,
             p.position.y,
-            Utils.UTM_ZONE_NUM,
-            Utils.UTM_ZONE_LETTER,
+            Constants.UTM_ZONE_NUM,
+            Constants.UTM_ZONE_LETTER,
         )
 
         lat_noisy = lat + np.random.normal(0, 1e-6)
