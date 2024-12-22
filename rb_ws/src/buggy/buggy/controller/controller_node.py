@@ -1,10 +1,16 @@
 import threading
+import sys
+
+import numpy as np
 
 import rclpy
 from rclpy.node import Node
 
 from std_msgs.msg import Float32, Float64, Bool
 from nav_msgs.msg import Odometry
+
+sys.path.append("/rb_ws/src/buggy/buggy")
+from rb_ws.src.buggy.buggy.util.trajectory_old import Trajectory
 
 class Controller(Node):
 
@@ -20,8 +26,22 @@ class Controller(Node):
             
 
         #Parameters
+        self.declare_parameter("dist", 0.0) #Starting Distance along path
+        start_dist = self.get_parameter("dist")
+
+        self.declare_parameter("traj_name", "buggycourse_path.json")
+        traj_name = self.get_parameter("traj_name")
+        self.cur_traj = Trajectory(json_filepath="/rb_ws/src/buggy/paths/" + traj_name) #TODO: Fixed filepath, not good
+
+        start_index = self.cur_traj.get_index_from_distance(start_dist)
+
         self.declare_parameter("controller_name", "stanley")
-        self.local_controller_name = self.get_parameter("controller_name")
+        match self.get_parameter("controller_name"):
+            case "stanley":
+                self.controller = StanleyController(start_index = start_index) #IMPORT STANLEY
+            case _:
+                self.get_logger().error("Invalid Controller Name!")
+                raise Exception("Invalid Controller Argument")
 
         # Publishers
         self.init_check_publisher = self.create_subscription(Bool,
@@ -42,18 +62,67 @@ class Controller(Node):
         self.traj_subscriber = self.create_subscription(Odometry, 'self/cur_traj', self.traj_listener, 1)
 
         self.lock = threading.Lock()
-        self.ticks = 0
-        #TODO: FIGURE OUT WHAT THESE ARE BEFORE MERGING
-        self.self_odom_msg = None
-        self.gps_odom_msg = None
-        self.other_odom_msg = None
-        self.use_gps_pos = False
+
+        self.odom = None
 
         timer_period = 0.01  # seconds (100 Hz)
         self.timer = self.create_timer(timer_period, self.loop)
-        self.i = 0 # Loop Counter
+    
+    def odom_listener(self, msg : Odometry):
+        '''
+        This is the subscriber that updates the buggies state for navigation
+        msg, should be a CLEAN state as defined in the wiki
+        '''
+        with self.lock:
+            self.odom = msg
+    
+    def traj_listener(self, msg): #TYPE UNKOWN AS OF NOW?? CUSTOM TYPE WHEN #TODO: FIGURE OUT BEFORE MERGE
+        '''
+        This is the subscriber that updates the buggies trajectory for navigation
+        '''
+        with self.lock:
+            self.cur_traj, self.controller.current_traj_index = Trajectory.unpack(msg)
 
-        #
+    def init_check(self):
+        """
+        Checks if it's safe to switch the buggy into autonomous driving mode.
+        Specifically, it checks:
+            if we can recieve odometry messages from the buggy
+            if the covariance is acceptable (less than 1 meter)
+            if the buggy thinks it is facing in the correct direction wrt the local trajectory (not 180 degrees flipped)
+
+        Returns:
+           A boolean describing the status of the buggy (safe for auton or unsafe for auton)
+        """
+        if (self.odom == None):
+            self.get_logger().warn("WARNING: no available position estimate")
+            return False
+    
+        elif (self.odom.pose.covariance[0] ** 2 + self.odom.pose.covariance[7] ** 2 > 1**2):
+            self.get_logger().warn("checking position estimate certainty")
+            return False
+        
+        #Originally under a lock, doesn't seem necessary?
+        current_heading = self.odom.pose.pose.orientation.z
+        closest_heading = self.cur_traj.get_heading_by_index(self.cur_traj.get_closest_index_on_path(self.odom.pose.pose.position.x, self.odom.pose.pose.position.y))
+
+        self.get_logger().info("current heading: " + str(np.rad2deg(current_heading)))
+        self.heading_publisher.publish(Float32(np.rad2deg(current_heading)))
+
+        #Converting headings from [-pi, pi] to [0, 2pi]
+        if (current_heading < 0):
+            current_heading = 2 * np.pi + current_heading
+        if (closest_heading < 0):
+            closest_heading = 2 * np.pi + closest_heading
+        
+        if (abs(current_heading - closest_heading) >= np.pi/2):
+            self.get_logger().warn("WARNING: INCORRECT HEADING! restart stack. Current heading [-180, 180]: " + str(np.rad2deg(current_heading)))
+            return False
+    
+        return True
+
+
+
 
     def loop(self):
         # Loop for the code that operates every 10ms
@@ -61,19 +130,7 @@ class Controller(Node):
         msg.data = True
         self.heartbeat_publisher.publish(msg)
 
-    def odom_listener(self, msg : Odometry):
-        '''
-        This is the subscriber that updates the buggies state for navigation
-        msg, should be a CLEAN state as defined in the wiki
-        '''
-        raise NotImplemented
     
-    def traj_listener(self, msg): #TYPE UNKOWN AS OF NOW?? CUSTOM TYPE WHEN #TODO: FIGURE OUT BEFORE MERGE
-        '''
-        This is the subscriber that updates the buggies trajectory for navigation
-        '''
-        raise NotImplemented
-
 
 def main(args=None):
     rclpy.init(args=args)
