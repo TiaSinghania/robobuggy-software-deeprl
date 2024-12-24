@@ -75,6 +75,7 @@ class Simulator(Node):
         self.plot_publisher = self.create_publisher(Pose, "sim_2d/utm", 1)
 
         # simulate the INS's outputs (noise included)
+        # this is published as a BuggyState (UTM and radians)
         self.pose_publisher = self.create_publisher(Odometry, "nav/odom", 1)
 
         self.navsatfix_noisy_publisher = self.create_publisher(
@@ -154,13 +155,15 @@ class Simulator(Node):
         odom.header.stamp = time_stamp
 
         odom_pose = Pose()
-        odom_pose.position.x = float(long_noisy)
-        odom_pose.position.y = float(lat_noisy)
+        east, north = utm.from_latlon(lat_noisy, long_noisy)
+        odom_pose.position.x = float(east)
+        odom_pose.position.y = float(north)
         odom_pose.position.z = float(260)
 
         odom_pose.orientation.z = np.sin(np.deg2rad(self.heading) / 2)
         odom_pose.orientation.w = np.cos(np.deg2rad(self.heading) / 2)
 
+        # NOTE: autonsystem only cares about magnitude of velocity, so we don't need to split into components
         odom_twist = Twist()
         odom_twist.linear.x = float(velocity)
 
