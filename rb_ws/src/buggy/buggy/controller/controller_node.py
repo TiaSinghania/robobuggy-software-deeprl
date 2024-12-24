@@ -53,9 +53,6 @@ class Controller(Node):
         self.heading_publisher = self.create_subscription.Publisher(
             Float32, "/auton/debug/heading", queue_size=1
         )
-        self.distance_publisher = self.create_subscription.Publisher(
-            Float64, "/auton/debug/distance", queue_size=1
-        )
 
         # Subscribers
         self.odom_subscriber = self.create_subscription(Odometry, 'self/buggy/state', self.odom_listener, 1)
@@ -64,6 +61,7 @@ class Controller(Node):
         self.lock = threading.Lock()
 
         self.odom = None
+        self.passed_init = False
 
         timer_period = 0.01  # seconds (100 Hz)
         self.timer = self.create_timer(timer_period, self.loop)
@@ -121,14 +119,19 @@ class Controller(Node):
     
         return True
 
-
-
-
     def loop(self):
-        # Loop for the code that operates every 10ms
-        msg = Bool()
-        msg.data = True
-        self.heartbeat_publisher.publish(msg)
+        if not self.passed_init:
+            self.passed_init = self.init_check()
+            self.init_check_publisher.publish(self.passed_init)
+            if self.passed_init:
+                self.get_logger.info("Passed Initialization Check")
+            else:
+                return
+        
+        self.heading_publisher.publish(Float32(np.rad2deg(self.odom.pose.pose.orientation.z)))
+        steering_angle = self.controller.compute_control(self.odom, self.cur_traj)
+        steering_angle_deg = np.rad2deg(steering_angle)
+        self.steer_publisher.publish(Float64(steering_angle_deg))
 
     
 
