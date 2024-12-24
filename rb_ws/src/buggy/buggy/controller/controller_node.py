@@ -22,7 +22,7 @@ class Controller(Node):
         indicating whether the node is still alive.
         
         """
-        super().__init__('watchdog')
+        super().__init__('controller')
             
 
         #Parameters
