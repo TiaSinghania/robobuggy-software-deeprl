@@ -35,28 +35,7 @@ class Simulator(Node):
             "RACELINE_PASS": (589468.02, 4476993.07, -160),
         }
 
-        # for X11 matplotlib (direction included)
-        self.plot_publisher = self.create_publisher(Pose, "sim_2d/utm", 1)
-
-        # simulate the INS's outputs (noise included)
-        self.pose_publisher = self.create_publisher(Odometry, "nav/odom", 1)
-
-        self.steering_subscriber = self.create_subscription(
-            Float64, "buggy/input/steering", self.update_steering_angle, 1
-        )
-
-        self.navsatfix_noisy_publisher = self.create_publisher(
-                NavSatFix, "state/pose_navsat_noisy", 1
-        )
-
-        # To read from velocity
-        self.velocity_subscriber = self.create_subscription(
-            Float64, "velocity", self.update_velocity, 1
-        )
-
-
         self.declare_parameter('velocity', 12)
-
         if (self.get_namespace() == "/SC"):
             self.buggy_name = "SC"
             self.declare_parameter('pose', "Hill1_SC")
@@ -82,6 +61,25 @@ class Simulator(Node):
 
         timer_period = 1/self.rate  # seconds
         self.timer = self.create_timer(timer_period, self.loop)
+
+        self.steering_subscriber = self.create_subscription(
+            Float64, "buggy/input/steering", self.update_steering_angle, 1
+        )
+
+        # To read from velocity
+        self.velocity_subscriber = self.create_subscription(
+            Float64, "velocity", self.update_velocity, 1
+        )
+
+        # for X11 matplotlib (direction included)
+        self.plot_publisher = self.create_publisher(Pose, "sim_2d/utm", 1)
+
+        # simulate the INS's outputs (noise included)
+        self.pose_publisher = self.create_publisher(Odometry, "nav/odom", 1)
+
+        self.navsatfix_noisy_publisher = self.create_publisher(
+                NavSatFix, "state/pose_navsat_noisy", 1
+        )
 
     def update_steering_angle(self, data: Float64):
         with self.lock:
