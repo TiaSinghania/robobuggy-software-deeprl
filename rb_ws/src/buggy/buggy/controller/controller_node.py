@@ -10,7 +10,8 @@ from std_msgs.msg import Float32, Float64, Bool
 from nav_msgs.msg import Odometry
 
 sys.path.append("/rb_ws/src/buggy/buggy")
-from rb_ws.src.buggy.buggy.util.trajectory_old import Trajectory
+from util.trajectory_old import Trajectory
+from controller.stanley_controller import StanleyController
 
 class Controller(Node):
 
@@ -38,20 +39,20 @@ class Controller(Node):
         self.declare_parameter("controller_name", "stanley")
         match self.get_parameter("controller_name"):
             case "stanley":
-                self.controller = StanleyController(start_index = start_index) #IMPORT STANLEY
+                self.controller = StanleyController(start_index = start_index, buggy_name = self.get_namespace(), node=self) #IMPORT STANLEY
             case _:
                 self.get_logger().error("Invalid Controller Name!")
                 raise Exception("Invalid Controller Argument")
 
         # Publishers
-        self.init_check_publisher = self.create_subscription(Bool,
-            "debug/init_safety_check", queue_size=1
+        self.init_check_publisher = self.create_publisher(Bool,
+            "debug/init_safety_check", 1
         )
-        self.steer_publisher = self.create_subscription.Publisher(
-            Float64, "/buggy/steering", queue_size=1
+        self.steer_publisher = self.create_publisher(
+            Float64, "/buggy/steering", 1
         )
-        self.heading_publisher = self.create_subscription.Publisher(
-            Float32, "/auton/debug/heading", queue_size=1
+        self.heading_publisher = self.create_publisher(
+            Float32, "/auton/debug/heading", 1
         )
 
         # Subscribers
