@@ -10,7 +10,7 @@ from std_msgs.msg import Float32, Float64, Bool
 from nav_msgs.msg import Odometry
 
 sys.path.append("/rb_ws/src/buggy/buggy")
-from util.trajectory_old import Trajectory
+from util.trajectory import Trajectory
 from controller.stanley_controller import StanleyController
 
 class Controller(Node):
