@@ -1,8 +1,7 @@
 import numpy as np
 
 from geometry_msgs.msg import Pose as ROSPose
-from tf.transformations import euler_from_quaternion
-from tf.transformations import quaternion_from_euler
+from scipy.spatial.transform import Rotation
 
 
 class Pose:
@@ -28,20 +27,20 @@ class Pose:
         Returns:
             Pose: converted pose
         """
-        (_, _, yaw) = euler_from_quaternion(
+        (_, _, yaw) = Rotation.from_quat(
             [
                 rospose.orientation.x,
                 rospose.orientation.y,
                 rospose.orientation.z,
                 rospose.orientation.w,
             ]
-        )
+        ).as_euler('xyz')
 
         p = Pose(rospose.position.x, rospose.position.y, yaw)
         return p
 
     def heading_to_quaternion(heading):
-        q = quaternion_from_euler(0, 0, heading)
+        q = Rotation.from_euler([0, 0, heading]).as_quat()
         return q
 
     def __init__(self, x, y, theta):

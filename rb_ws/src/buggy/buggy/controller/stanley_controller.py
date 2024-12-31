@@ -6,7 +6,7 @@ from geometry_msgs.msg import Pose as ROSPose
 from nav_msgs.msg import Odometry
 
 sys.path.append("/rb_ws/src/buggy/buggy")
-from rb_ws.src.buggy.buggy.util.trajectory import Trajectory
+from util.trajectory import Trajectory
 from controller.controller_superclass import Controller
 from util.pose import Pose
 
@@ -30,10 +30,10 @@ class StanleyController(Controller):
     def __init__(self, start_index, namespace, node):
         super(StanleyController, self).__init__(start_index, namespace, node)
         self.debug_reference_pos_publisher = self.node.create_publisher(
-            "/auton/debug/reference_navsat", NavSatFix, queue_size=1
+            NavSatFix, "auton/debug/reference_navsat", 1
         )
         self.debug_error_publisher = self.node.create_publisher(
-            "/auton/debug/error", ROSPose, queue_size=1
+            ROSPose, "auton/debug/error", 1
         )
     
     def compute_control(self, state_msg : Odometry, trajectory : Trajectory):
@@ -115,7 +115,7 @@ class StanleyController(Controller):
 
 
         #Calculate error, where x is in orientation of buggy, y is cross track error
-        current_pose = Pose(current_rospose.pose.x, current_rospose.pose.y, heading)
+        current_pose = Pose(current_rospose.position.x, current_rospose.position.y, heading)
         reference_error = current_pose.convert_point_from_global_to_local_frame(closest_position)
         reference_error -= np.array([StanleyController.WHEELBASE, 0]) #Translae back to back wheel to get accurate error
         

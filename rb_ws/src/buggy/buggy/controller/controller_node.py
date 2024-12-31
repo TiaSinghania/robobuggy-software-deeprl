@@ -24,22 +24,23 @@ class Controller(Node):
         
         """
         super().__init__('controller')
+        self.get_logger().info('INITIALIZED.')
             
 
         #Parameters
         self.declare_parameter("dist", 0.0) #Starting Distance along path
-        start_dist = self.get_parameter("dist")
+        start_dist = self.get_parameter("dist").value
 
-        self.declare_parameter("traj_name", "buggycourse_path.json")
-        traj_name = self.get_parameter("traj_name")
+        self.declare_parameter("traj_name", "buggycourse_safe.json")
+        traj_name = self.get_parameter("traj_name").value
         self.cur_traj = Trajectory(json_filepath="/rb_ws/src/buggy/paths/" + traj_name) #TODO: Fixed filepath, not good
 
         start_index = self.cur_traj.get_index_from_distance(start_dist)
 
         self.declare_parameter("controller_name", "stanley")
-        match self.get_parameter("controller_name"):
+        match self.get_parameter("controller_name").value:
             case "stanley":
-                self.controller = StanleyController(start_index = start_index, buggy_name = self.get_namespace(), node=self) #IMPORT STANLEY
+                self.controller = StanleyController(start_index = start_index, namespace = self.get_namespace(), node=self) #IMPORT STANLEY
             case _:
                 self.get_logger().error("Invalid Controller Name!")
                 raise Exception("Invalid Controller Argument")
@@ -49,14 +50,14 @@ class Controller(Node):
             "debug/init_safety_check", 1
         )
         self.steer_publisher = self.create_publisher(
-            Float64, "/buggy/steering", 1
+            Float64, "input/steering", 1
         )
         self.heading_publisher = self.create_publisher(
-            Float32, "/auton/debug/heading", 1
+            Float32, "auton/debug/heading", 1
         )
 
         # Subscribers
-        self.odom_subscriber = self.create_subscription(Odometry, 'self/buggy/state', self.odom_listener, 1)
+        self.odom_subscriber = self.create_subscription(Odometry, 'self/state', self.odom_listener, 1)
         self.traj_subscriber = self.create_subscription(Odometry, 'self/cur_traj', self.traj_listener, 1)
 
         self.lock = threading.Lock()
@@ -106,7 +107,9 @@ class Controller(Node):
         closest_heading = self.cur_traj.get_heading_by_index(self.cur_traj.get_closest_index_on_path(self.odom.pose.pose.position.x, self.odom.pose.pose.position.y))
 
         self.get_logger().info("current heading: " + str(np.rad2deg(current_heading)))
-        self.heading_publisher.publish(Float32(np.rad2deg(current_heading)))
+        msg = Float32()
+        msg.data = np.rad2deg(current_heading)
+        self.heading_publisher.publish(msg)
 
         #Converting headings from [-pi, pi] to [0, 2pi]
         if (current_heading < 0):
@@ -123,30 +126,32 @@ class Controller(Node):
     def loop(self):
         if not self.passed_init:
             self.passed_init = self.init_check()
-            self.init_check_publisher.publish(self.passed_init)
+            msg = Bool()
+            msg.data = self.passed_init
+            self.init_check_publisher.publish(msg)
             if self.passed_init:
-                self.get_logger.info("Passed Initialization Check")
+                self.get_logger().info("Passed Initialization Check")
             else:
                 return
         
-        self.heading_publisher.publish(Float32(np.rad2deg(self.odom.pose.pose.orientation.z)))
+        self.heading_publisher.publish(Float32(data=np.rad2deg(self.odom.pose.pose.orientation.z)))
         steering_angle = self.controller.compute_control(self.odom, self.cur_traj)
         steering_angle_deg = np.rad2deg(steering_angle)
-        self.steer_publisher.publish(Float64(steering_angle_deg))
+        self.steer_publisher.publish(Float64(data=float(steering_angle_deg)))
 
     
 
 def main(args=None):
     rclpy.init(args=args)
 
-    watchdog = Controller()
+    controller = Controller()
 
-    rclpy.spin(watchdog)
+    rclpy.spin(controller)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    watchdog.destroy_node()
+    controller.destroy_node()
     rclpy.shutdown()
 
 

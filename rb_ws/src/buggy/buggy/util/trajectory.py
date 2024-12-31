@@ -3,7 +3,7 @@ import time
 import uuid
 import matplotlib.pyplot as plt
 
-from buggy.msg import TrajectoryMsg
+# from buggy.msg import TrajectoryMsg
 
 import numpy as np
 from scipy.interpolate import Akima1DInterpolator, CubicSpline
@@ -58,7 +58,7 @@ class Trajectory:
                 lon = waypoint["lon"]
 
                 # Convert to world coordinates
-                x, y = utm.from_latlon(lat, lon) #TODO: Before Merging, make sure that we can do this nonlocalized
+                x, y, _, _ = utm.from_latlon(lat, lon) #TODO: Before Merging, make sure that we can do this nonlocalized
                 positions.append([x, y])
 
             positions = np.array(positions)
@@ -350,7 +350,7 @@ class Trajectory:
             + start_index
         )
 
-    def pack(self, x, y) -> TrajectoryMsg:
+    """ def pack(self, x, y) -> TrajectoryMsg:
         traj = TrajectoryMsg()
         traj.easting = self.positions[:, 0]
         traj.northing = self.positions[:, 1]
@@ -361,5 +361,5 @@ class Trajectory:
     def unpack(trajMsg : TrajectoryMsg):
         pos = np.array([trajMsg.easting, trajMsg.northing]).transpose(1, 0)
         cur_idx = trajMsg.cur_idx
-        return Trajectory(positions=pos), cur_idx
+        return Trajectory(positions=pos), cur_idx """
 
