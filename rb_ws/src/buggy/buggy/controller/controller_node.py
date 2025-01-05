@@ -38,7 +38,7 @@ class Controller(Node):
         start_index = self.cur_traj.get_index_from_distance(start_dist)
 
         self.declare_parameter("controller_name", "stanley")
-        match self.get_parameter("controller_name").value:
+        match (self.get_parameter("controller_name").value):
             case "stanley":
                 self.controller = StanleyController(start_index = start_index, namespace = self.get_namespace(), node=self) #IMPORT STANLEY
             case _:
