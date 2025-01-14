@@ -10,6 +10,7 @@ from scipy.spatial.transform import Rotation
 class BuggyStateConverter(Node):
     def __init__(self):
         super().__init__("buggy_state_converter")
+        self.get_logger().info('INITIALIZED.')
 
         namespace = self.get_namespace()
         if namespace == "/SC":

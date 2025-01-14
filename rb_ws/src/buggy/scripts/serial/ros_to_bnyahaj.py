@@ -148,7 +148,6 @@ class Translator(Node):
             self.steer_angle = msg.data
             self.fresh_steer = True
 
-
     def writer_thread(self):
         """
         Sends ROS Topics to bnayhaj serial, only sends a steering angle when we receive a fresh one
