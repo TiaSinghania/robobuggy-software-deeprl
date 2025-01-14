@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
+import os
 import threading
-import sys
-
 import numpy as np
-
 import rclpy
 from rclpy.node import Node
 
@@ -12,7 +10,6 @@ from std_msgs.msg import Float32, Float64, Bool
 from nav_msgs.msg import Odometry
 from buggy.msg import TrajectoryMsg
 
-sys.path.append("/rb_ws/src/buggy/scripts")
 from util.trajectory import Trajectory
 from controller.stanley_controller import StanleyController
 
@@ -24,7 +21,7 @@ class Controller(Node):
 
         Creates a ROS node with a publisher that periodically sends a message
         indicating whether the node is still alive.
-        
+
         """
         super().__init__('controller')
         self.get_logger().info('INITIALIZED.')
@@ -36,7 +33,7 @@ class Controller(Node):
 
         self.declare_parameter("traj_name", "buggycourse_safe.json")
         traj_name = self.get_parameter("traj_name").value
-        self.cur_traj = Trajectory(json_filepath="/rb_ws/src/buggy/paths/" + traj_name) #TODO: Fixed filepath, not good
+        self.cur_traj = Trajectory(json_filepath=os.environ["TRAJPATH"] + traj_name)
 
         start_index = self.cur_traj.get_index_from_distance(start_dist)
 
