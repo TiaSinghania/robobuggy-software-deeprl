@@ -10,5 +10,10 @@ NAND:
   NAND_controller:
     ros__parameters:
       dist: 0.0
+      stateTopic: "self/state"
+      trajectoryTopic: "self/cur_traj"
+      steeringTopic: "input/steering"
+      useHeadingRate: true
+      controllerName: "controller"
       # traj_name: "buggycourse_safe.json"
       controller: "stanley"
