@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
+import threading
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64
-import threading
 
 
 class SetSteer(Node):
