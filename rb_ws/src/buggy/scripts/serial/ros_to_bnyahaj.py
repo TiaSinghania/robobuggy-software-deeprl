@@ -76,6 +76,9 @@ class Translator(Node):
         self.roundtrip_time_publisher = self.create_publisher(
             Float64, "debug/roundtrip_time", 1
         )
+        self.teensycycle_time_publisher = self.create_publisher(
+            Float64, "debug/teensycycle_time", 1
+        )
 
     def set_alarm(self, msg):
         """
@@ -186,9 +189,10 @@ class Translator(Node):
 
 
             elif isinstance(packet, RoundtripTimestamp):
-
-                self.get_logger().debug(f'Roundtrip Timestamp: {packet.returned_time}, {(time.time_ns() * 1e-6 - packet.returned_time) * 1e-3}')
-                self.roundtrip_time_publisher.publish(Float64(data=(time.time_ns() * 1e-6 - packet.returned_time) * 1e-3))
+                rtt = (time.time_ns() - packet.returned_time) * 1e-9
+                self.get_logger().debug(f'Roundtrip Timestamp: {packet.returned_time}, RTT: {rtt}')
+                self.roundtrip_time_publisher.publish(Float64(data=rtt))
+                self.teensycycle_time_publisher.publish(Float64(data=packet.teensy_cycle_time * 1e-6))
 
         if self.fresh_steer:
             with self.lock:
@@ -199,7 +203,7 @@ class Translator(Node):
         with self.lock:
             self.comms.send_alarm(self.alarm)
         with self.lock:
-            self.comms.send_timestamp(time.time_ns() * 1e-6)
+            self.comms.send_timestamp(time.time_ns())
 
 
 def main(args=None):
