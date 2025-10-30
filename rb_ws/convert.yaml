@@ -1,4 +1,0 @@
-output_bags:
-  - uri: nand-raceline-mcap
-    storage_id: mcap
-    all: true
