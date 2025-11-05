@@ -3,7 +3,7 @@ import numpy as np
 
 from util.trajectory import Trajectory
 from util.buggy import BuggyObs
-from controller_superclass import Controller
+from scripts.controller.controller_superclass import Controller
 
 import utm
 

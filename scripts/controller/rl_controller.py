@@ -1,6 +1,6 @@
 from util.buggy import Buggy, BuggyObs
 from util.trajectory import Trajectory
-from controller_superclass import Controller
+from scripts.controller.controller_superclass import Controller
 
 class RL_Controller(Controller):
     def __init__(self, reference_traj: Trajectory) -> None:
