@@ -1,14 +1,9 @@
 import numpy as np
 
-from sensor_msgs.msg import NavSatFix
-from geometry_msgs.msg import Pose as ROSPose
-from nav_msgs.msg import Odometry
-from std_msgs.msg import Float64
-
 
 from util.trajectory import Trajectory
-from controller.controller_superclass import Controller
-from util.pose import Pose
+from util.buggy import BuggyObs
+from controller_superclass import Controller
 
 import utm
 
@@ -23,24 +18,11 @@ class StanleyController(Controller):
     K_SOFT = 1.0 # m/s
     K_D_YAW = 0.012 # rad / (rad/s)
 
-    def __init__(self, start_index, namespace, node, usingHeadingRateError, controllerName):
-        super(StanleyController, self).__init__(start_index, namespace, node)
-        self.debug_reference_pos_publisher = self.node.create_publisher(
-            NavSatFix, controllerName + "/debug/reference_navsat", 1
-        )
-        self.debug_error_publisher = self.node.create_publisher(
-            ROSPose, controllerName + "/debug/stanley_error", 1
-        )
-        self.debug_yaw_rate_publisher = self.node.create_publisher(
-            Float64, "controller/debug/yaw", 1
-        )
-        self.debug_error_heading_publisher = self.node.create_publisher(
-            Float64, "controller/debug/heading", 1
-        )
+    def __init__(self, reference_traj):
+        super(StanleyController, self).__init__(reference_traj)
 
-        self.usingHeadingRateError = usingHeadingRateError
-
-    def compute_control(self, state_msg : Odometry, trajectory : Trajectory):
+    # TODO: update this once state space is well defined
+    def compute_control(self, obs: BuggyObs):
         """Computes the steering angle determined by Stanley controller.
         Does this by looking at the crosstrack error + heading error
 
@@ -51,8 +33,7 @@ class StanleyController(Controller):
         Returns:
             float (desired steering angle)
         """
-        if self.current_traj_index >= trajectory.get_num_points() - 1:
-            self.node.get_logger().error("[Stanley]: Ran out of path to follow!")
+        if self.current_traj_index >= self.trajectory.get_num_points() - 1:
             raise Exception("[Stanley]: Ran out of path to follow!")
 
         current_rospose = state_msg.pose.pose
@@ -63,11 +44,11 @@ class StanleyController(Controller):
         heading = current_rospose.orientation.z
         x, y = current_rospose.position.x, current_rospose.position.y #(Easting, Northing)
 
-        front_x = x + StanleyController.WHEELBASE * np.cos(heading)
-        front_y = y + StanleyController.WHEELBASE * np.sin(heading)
+        front_x = x + obs.wheelbase * np.cos(heading)
+        front_y = y + obs.wheelbase * np.sin(heading)
 
         # setting range of indices to search so we don't have to search the entire path
-        traj_index = trajectory.get_closest_index_on_path(
+        traj_index = self.trajectory.get_closest_index_on_path(
             front_x,
             front_y,
             start_index=self.current_traj_index - 20,
@@ -76,15 +57,15 @@ class StanleyController(Controller):
         self.current_traj_index = max(traj_index, self.current_traj_index)
 
         # Use heading at the closest index
-        ref_heading = trajectory.get_heading_by_index(self.current_traj_index)
+        ref_heading = self.trajectory.get_heading_by_index(self.current_traj_index)
 
         error_heading = ref_heading - heading
         error_heading = np.arctan2(np.sin(error_heading), np.cos(error_heading)) #Bounds error_heading
 
         # Calculate cross track error by finding the distance from the buggy to the tangent line of
         # the reference trajectory
-        closest_position = trajectory.get_position_by_index(self.current_traj_index)
-        next_position = trajectory.get_position_by_index(
+        closest_position = self.trajectory.get_position_by_index(self.current_traj_index)
+        next_position = self.trajectory.get_position_by_index(
             self.current_traj_index + 0.0001
         )
         x1 = closest_position[0]
@@ -100,7 +81,7 @@ class StanleyController(Controller):
         )
 
         # Use acceleration at the closest index
-        accel_x, accel_y = trajectory.get_acceleration_by_index(self.current_traj_index)
+        accel_x, accel_y = self.trajectory.get_acceleration_by_index(self.current_traj_index)
         # this works because tan(heading) = dydt/dxdt (do the math)
         dxdt, dydt = np.cos(ref_heading), np.sin(ref_heading)
 
@@ -118,30 +99,9 @@ class StanleyController(Controller):
             steering_cmd += yaw
         steering_cmd = np.clip(steering_cmd, -np.pi / 9, np.pi / 9)
 
-        self.debug_error_heading_publisher.publish(Float64(data=float(error_heading)))
-        self.debug_yaw_rate_publisher.publish(Float64(data=yaw))
-
         # Calculate error, where x is in orientation of buggy, y is cross track error
         current_pose = Pose(current_rospose.position.x, current_rospose.position.y, heading)
         reference_error = current_pose.convert_point_from_global_to_local_frame(closest_position)
         reference_error -= np.array([StanleyController.WHEELBASE, 0]) # Translate back to back wheel to get accurate error
-
-        error_pose = ROSPose()
-        error_pose.position.x = reference_error[0]
-        error_pose.position.y = reference_error[1]
-        self.debug_error_publisher.publish(error_pose)
-
-        # Publish reference position for debugging
-        try:
-            reference_navsat = NavSatFix()
-            lat, lon = utm.to_latlon(closest_position[0], closest_position[1], 17, "T")
-            reference_navsat.latitude = lat
-            reference_navsat.longitude = lon
-            self.debug_reference_pos_publisher.publish(reference_navsat)
-        except Exception as e:
-            self.node.get_logger().warn(
-                "[Stanley] Unable to convert closest track position lat lon; Error: "
-                + str(e)
-            )
 
         return steering_cmd
