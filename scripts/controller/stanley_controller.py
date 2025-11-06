@@ -1,14 +1,11 @@
 import numpy as np
-
-
 from util.trajectory import Trajectory
-from util.buggy import BuggyObs
-from scripts.controller.controller_superclass import Controller
+from util.buggy import Buggy
 
 import utm
 
 
-class StanleyController(Controller):
+class StanleyController():
     """
     Stanley Controller (front axle used as reference point)
     Referenced from this paper: https://ai.stanford.edu/~gabeh/papers/hoffmann_stanley_control07.pdf
@@ -18,16 +15,17 @@ class StanleyController(Controller):
     K_SOFT = 1.0 # m/s
     K_D_YAW = 0.012 # rad / (rad/s)
 
-    def __init__(self, reference_traj):
-        super(StanleyController, self).__init__(reference_traj)
+    def __init__(self, buggy : Buggy, reference_traj: Trajectory) -> None:
+        self.trajectory = reference_traj
+        self.current_traj_index = 0
+        self.buggy = buggy
 
-    # TODO: update this once state space is well defined
-    def compute_control(self, obs: BuggyObs):
+    def compute_control(self):
         """Computes the steering angle determined by Stanley controller.
         Does this by looking at the crosstrack error + heading error
 
         Args:
-            state_msg: ros Odometry message
+            buggy: State of buggy computing the control of
             trajectory (Trajectory): reference trajectory
 
         Returns:
@@ -36,16 +34,12 @@ class StanleyController(Controller):
         if self.current_traj_index >= self.trajectory.get_num_points() - 1:
             raise Exception("[Stanley]: Ran out of path to follow!")
 
-        current_rospose = state_msg.pose.pose
-        current_speed = np.sqrt(
-            state_msg.twist.twist.linear.x**2 + state_msg.twist.twist.linear.y**2
-        )
-        yaw_rate = state_msg.twist.twist.angular.z
-        heading = current_rospose.orientation.z
-        x, y = current_rospose.position.x, current_rospose.position.y #(Easting, Northing)
+        current_speed = self.buggy.speed
+        heading = self.buggy.theta
+        x, y = self.buggy.e_utm, self.buggy.n_utm #(Easting, Northing)
 
-        front_x = x + obs.wheelbase * np.cos(heading)
-        front_y = y + obs.wheelbase * np.sin(heading)
+        front_x = x + self.buggy.wheelbase * np.cos(heading)
+        front_y = y + self.buggy.wheelbase * np.sin(heading)
 
         # setting range of indices to search so we don't have to search the entire path
         traj_index = self.trajectory.get_closest_index_on_path(
@@ -80,28 +74,8 @@ class StanleyController(Controller):
             StanleyController.CROSS_TRACK_GAIN * error_dist, current_speed + StanleyController.K_SOFT
         )
 
-        # Use acceleration at the closest index
-        accel_x, accel_y = self.trajectory.get_acceleration_by_index(self.current_traj_index)
-        # this works because tan(heading) = dydt/dxdt (do the math)
-        dxdt, dydt = np.cos(ref_heading), np.sin(ref_heading)
-
-        # this was dervied by doing the chain rule on the target derivative of theta.
-        # dtheta/dt = d/dt (arctan (dydt/dxdt)) << do math.
-        r_traj = (1/(1 + (dydt/dxdt)**2)) * (accel_y/dxdt - (dydt * accel_x)/(dxdt ** 2))
-
-        # Calculate yaw rate error
-        r_meas = yaw_rate
-
-        yaw = float(StanleyController.K_D_YAW * (r_traj - r_meas))
         # Determine steering_command
         steering_cmd = error_heading + cross_track_component
-        if self.usingHeadingRateError:
-            steering_cmd += yaw
         steering_cmd = np.clip(steering_cmd, -np.pi / 9, np.pi / 9)
-
-        # Calculate error, where x is in orientation of buggy, y is cross track error
-        current_pose = Pose(current_rospose.position.x, current_rospose.position.y, heading)
-        reference_error = current_pose.convert_point_from_global_to_local_frame(closest_position)
-        reference_error -= np.array([StanleyController.WHEELBASE, 0]) # Translate back to back wheel to get accurate error
 
         return steering_cmd
