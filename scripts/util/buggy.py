@@ -47,10 +47,10 @@ class Buggy:
         self.speed = state[2]
         self.theta = state[3]
 
-    def get_self_obs(self) -> np.ndarray:
+    def get_full_obs(self) -> np.ndarray:
         return np.array([self.e_utm, self.n_utm, self.speed, self.theta, self.delta])
 
-    def get_other_obs(self) -> np.ndarray:
+    def get_partial_obs(self) -> np.ndarray:
         return np.array([self.e_utm, self.n_utm])
 
 
