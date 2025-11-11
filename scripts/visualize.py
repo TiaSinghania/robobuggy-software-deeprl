@@ -6,7 +6,7 @@ import numpy as np
 
 sys.path.append("scripts")
 
-from simulator.environment import BuggyCourseEnv
+from src.simulator.environment import BuggyCourseEnv
 
 
 def visualize_environment(render_every_n_steps=5):
@@ -54,14 +54,20 @@ def visualize_environment(render_every_n_steps=5):
     finally:
         # Clean up matplotlib resources
         if env.window_closed:
-            plt.close('all')
+            plt.close("all")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Buggy environment runner')
-    parser.add_argument('--visualize', action='store_true', help='Visualize the environment')
-    parser.add_argument('--render-every', type=int, default=5,
-                        help='Render visualization every N steps (default: 5). Lower = smoother but slower.')
+    parser = argparse.ArgumentParser(description="Buggy environment runner")
+    parser.add_argument(
+        "--visualize", action="store_true", help="Visualize the environment"
+    )
+    parser.add_argument(
+        "--render-every",
+        type=int,
+        default=5,
+        help="Render visualization every N steps (default: 5). Lower = smoother but slower.",
+    )
     args = parser.parse_args()
 
     if args.visualize:

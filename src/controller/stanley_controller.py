@@ -1,21 +1,21 @@
 import numpy as np
-from util.trajectory import Trajectory
-from util.buggy import Buggy
-
 import utm
 
+from src.util.buggy import Buggy
+from src.util.trajectory import Trajectory
 
-class StanleyController():
+
+class StanleyController:
     """
     Stanley Controller (front axle used as reference point)
     Referenced from this paper: https://ai.stanford.edu/~gabeh/papers/hoffmann_stanley_control07.pdf
     """
 
     CROSS_TRACK_GAIN = 1.3
-    K_SOFT = 1.0 # m/s
-    K_D_YAW = 0.012 # rad / (rad/s)
+    K_SOFT = 1.0  # m/s
+    K_D_YAW = 0.012  # rad / (rad/s)
 
-    def __init__(self, buggy : Buggy, reference_traj: Trajectory) -> None:
+    def __init__(self, buggy: Buggy, reference_traj: Trajectory) -> None:
         self.trajectory = reference_traj
         self.current_traj_index = 0
         self.buggy = buggy
@@ -36,7 +36,7 @@ class StanleyController():
 
         current_speed = self.buggy.speed
         heading = self.buggy.theta
-        x, y = self.buggy.e_utm, self.buggy.n_utm #(Easting, Northing)
+        x, y = self.buggy.e_utm, self.buggy.n_utm  # (Easting, Northing)
 
         front_x = x + self.buggy.wheelbase * np.cos(heading)
         front_y = y + self.buggy.wheelbase * np.sin(heading)
@@ -54,11 +54,15 @@ class StanleyController():
         ref_heading = self.trajectory.get_heading_by_index(self.current_traj_index)
 
         error_heading = ref_heading - heading
-        error_heading = np.arctan2(np.sin(error_heading), np.cos(error_heading)) #Bounds error_heading
+        error_heading = np.arctan2(
+            np.sin(error_heading), np.cos(error_heading)
+        )  # Bounds error_heading
 
         # Calculate cross track error by finding the distance from the buggy to the tangent line of
         # the reference trajectory
-        closest_position = self.trajectory.get_position_by_index(self.current_traj_index)
+        closest_position = self.trajectory.get_position_by_index(
+            self.current_traj_index
+        )
         next_position = self.trajectory.get_position_by_index(
             self.current_traj_index + 0.0001
         )
@@ -71,7 +75,8 @@ class StanleyController():
         )
 
         cross_track_component = -np.arctan2(
-            StanleyController.CROSS_TRACK_GAIN * error_dist, current_speed + StanleyController.K_SOFT
+            StanleyController.CROSS_TRACK_GAIN * error_dist,
+            current_speed + StanleyController.K_SOFT,
         )
 
         # Determine steering_command

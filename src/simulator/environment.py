@@ -15,9 +15,10 @@ from typing import Optional
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
-from controller.stanley_controller import StanleyController
-from util.buggy import Buggy
-from util.trajectory import Trajectory
+
+from src.controller.stanley_controller import StanleyController
+from src.util.buggy import Buggy
+from src.util.trajectory import Trajectory
 
 NAND_WHEELBASE = 1.3
 SC_WHEELBASE = 1.104
@@ -28,7 +29,7 @@ class BuggyCourseEnv(gym.Env):
         self,
         rate: int = 100,
         steer_scale: float = np.pi / 9,
-        target_path: str = "scripts/util/buggycourse_sc.json",
+        target_path: str = "src/util/buggycourse_sc.json",
         render_every_n_steps: int = 5,
     ):
         """
