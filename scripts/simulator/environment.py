@@ -70,7 +70,7 @@ class BuggyCourseEnv(gym.Env):
             - easting
             - northing
         """
-        return np.concatenate(arrays=[self.sc.get_self_obs(), self.nand.get_other_obs()])
+        return np.concatenate(arrays=[self.sc.get_full_obs(), self.nand.get_partial_obs()])
 
     def _get_info(self) -> None:
         """
