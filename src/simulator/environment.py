@@ -8,6 +8,7 @@ Can create multiple similar environments!!!
 Controls two buggies:
 SC - (policy controlled) : Buggy
 NAND - Classical Control (Stanley) : Buggy
+<<<<<<< HEAD
 """
 
 from typing import Optional
@@ -19,10 +20,23 @@ import numpy as np
 from src.controller.stanley_controller import StanleyController
 from src.util.buggy import Buggy
 from src.util.trajectory import Trajectory
+=======
+
+
+"""
+import numpy as np
+import gymnasium as gym
+from src.util.buggy import Buggy
+from src.util.trajectory import Trajectory
+from typing import Optional
+from src.controller.stanley_controller import StanleyController
+from gymnasium.envs.registration import register
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
 
 NAND_WHEELBASE = 1.3
 SC_WHEELBASE = 1.104
 
+<<<<<<< HEAD
 
 class BuggyCourseEnv(gym.Env):
     def __init__(
@@ -32,12 +46,20 @@ class BuggyCourseEnv(gym.Env):
         target_path: str = "src/util/buggycourse_sc.json",
         render_every_n_steps: int = 5,
     ):
+=======
+class BuggyCourseEnv(gym.Env):
+    def __init__(self,
+                 rate : int = 100,
+                 steer_scale : float = np.pi/9,
+                 target_path : str = "src/util/buggycourse_sc.json"):
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
         """
         Initialize a Buggy Course Environmnet.
 
         Arguments:
         rate (Hz) - Simulation Rate
         steer_scale - Scale action space to full steering range
+<<<<<<< HEAD
         render_every_n_steps - Only render visualization every N simulation steps (default: 5)
                               This keeps full simulation fidelity while speeding up rendering
 
@@ -78,6 +100,29 @@ class BuggyCourseEnv(gym.Env):
         self.window_closed = False
 
         self.reset()  # Sets up the buggies
+=======
+
+        """
+        # Positions
+        self.sc_init_state = (589761.40, 4477321.07, -1.91986) #easting, northing, heading
+
+        self.nand_init_state = (589751.46, 4477322.07, -1.91986) #easting, northing, heading
+
+
+        self.dt = 1 / rate
+        self.steer_scale = steer_scale
+
+        self.target_traj = Trajectory(target_path)
+
+        target_traj_idx = self.target_traj.get_closest_index_on_path(589693.75, 4477191.05)
+        self.target_traj_dist = self.target_traj.get_distance_from_index(target_traj_idx)
+
+
+        self.observation_space = gym.spaces.Box(-float('inf'), float('inf'), shape=(7,))
+        self.action_space = gym.spaces.Box(-1, 1)
+
+        self.reset() # Sets up the buggies
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
 
     def _get_obs(self) -> np.ndarray:
         """
@@ -94,7 +139,11 @@ class BuggyCourseEnv(gym.Env):
             - easting
             - northing
         """
+<<<<<<< HEAD
         return np.concatenate([self.sc.get_self_obs(), self.nand.get_other_obs()])
+=======
+        return np.concatenate((self.sc.get_full_obs(), self.nand.get_partial_obs()))
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
 
     def _get_info(self) -> dict:
         """
@@ -115,7 +164,11 @@ class BuggyCourseEnv(gym.Env):
             n_utm=self.sc_init_state[1],
             speed=12,
             theta=self.sc_init_state[2],
+<<<<<<< HEAD
             wheelbase=SC_WHEELBASE,
+=======
+            wheelbase=SC_WHEELBASE
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
         )
 
         self.nand = Buggy(
@@ -123,16 +176,27 @@ class BuggyCourseEnv(gym.Env):
             n_utm=self.nand_init_state[1],
             speed=6,
             theta=self.nand_init_state[2],
+<<<<<<< HEAD
             wheelbase=NAND_WHEELBASE,
+=======
+            wheelbase=NAND_WHEELBASE
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
         )
         self.nand_controller = StanleyController(self.nand, self.target_traj)
 
         self.terminated = False
+<<<<<<< HEAD
         self.step_count = 0
 
         return self._get_obs(), self._get_info()
 
     def _dynamics(self, state: np.ndarray, control: np.ndarray, constants: np.ndarray):
+=======
+
+        return self._get_obs(), self._get_info()
+
+    def _dynamics(self, state : np.ndarray, control : np.ndarray, constants : np.ndarray):
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
         """
         Finds the derivative of the buggy state to help understand movement
 
@@ -149,6 +213,7 @@ class BuggyCourseEnv(gym.Env):
         delta = control[0]
         wheelbase = constants[0]
 
+<<<<<<< HEAD
         return np.array(
             [
                 speed * np.cos(theta),
@@ -174,12 +239,33 @@ class BuggyCourseEnv(gym.Env):
         k4 = self._dynamics(state + k3 * dt, control, constants)
 
         buggy.set_state(state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6)
+=======
+        return np.array([speed * np.cos(theta),
+                         speed * np.sin(theta),
+                         0.0,
+                         speed / wheelbase * np.tan(delta),
+                         ])
+
+    def _update_buggy(self, buggy: Buggy, dt : float) -> None:
+        """
+        Uses the `dynamics` function to update the buggies state based on the state and steering angle
+        """
+        state, control, constants = buggy.get_state(), buggy.get_control(), buggy.get_constants()
+
+        k1 = self._dynamics(state, control, constants)
+        k2 = self._dynamics(state + k1 * dt/2, control, constants)
+        k3 = self._dynamics(state + k2 * dt/2, control, constants)
+        k4 = self._dynamics(state + k3 * dt, control, constants)
+
+        buggy.set_state(state + dt * (k1 + 2*k2 + 2*k3 + k4) / 6)
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
 
     def _get_reward(self) -> float:
         """
         Returns a reward, currently MSE of how far along you are along the path until the target
         """
         # TODO: Currently no curb constraints, so optimal strategy is beeline to goal flag!
+<<<<<<< HEAD
         traj_idx = self.target_traj.get_closest_index_on_path(
             self.sc.e_utm, self.sc.n_utm
         )
@@ -189,6 +275,13 @@ class BuggyCourseEnv(gym.Env):
             self.terminated = True  # Crossed the finish line
             self.terminated = True  # Crossed the finish line
             self.terminated = True  # Crossed the finish line
+=======
+        traj_idx = self.target_traj.get_closest_index_on_path(self.sc.e_utm, self.sc.n_utm)
+        traj_dist = self.target_traj.get_distance_from_index(traj_idx)
+
+        if traj_dist > self.target_traj_dist:
+            self.terminated = True # Crossed the finish line
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
 
         return -1 * (self.target_traj_dist - traj_dist) ** 2
 
@@ -202,7 +295,11 @@ class BuggyCourseEnv(gym.Env):
         Returns:
             tuple: (observation, reward, terminated, truncated, info)
         """
+<<<<<<< HEAD
 
+=======
+        assert sc_steering_percentage.shape == (1,)
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
         self.sc.delta = sc_steering_percentage[0] * self.steer_scale
         self._update_buggy(self.sc, self.dt)
 
@@ -210,13 +307,17 @@ class BuggyCourseEnv(gym.Env):
         self._update_buggy(self.nand, self.dt)
 
         reward = self._get_reward()
+<<<<<<< HEAD
         self.step_count += 1
+=======
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
 
         # Simple environment doesn't have max step limit
         truncated = False
 
         return self._get_obs(), reward, self.terminated, truncated, self._get_info()
 
+<<<<<<< HEAD
     def _on_close(self, event):
         """Handle window close event."""
         self.window_closed = True
@@ -316,3 +417,8 @@ class BuggyCourseEnv(gym.Env):
 
         plt.draw()
         plt.pause(0.001)  # Small pause to update the plot and process events
+=======
+    def render(self):
+        """Render the environment for human viewing. Maybe just a plot of the trajectories?"""
+        raise NotImplementedError()
+>>>>>>> fe73bdf1b89c0fc410c3f09c7b192dab32ad8068
