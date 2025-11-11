@@ -23,7 +23,7 @@ def visualize_environment(render_every_n_steps=5):
         step = 0
         while not terminated:
             # Random action for demonstration (replace with policy later)
-            action = np.random.uniform(-0.3, 0.3)
+            action = np.array([np.random.uniform(-0.3, 0.3)]).reshape(-1)
             obs, reward, terminated, truncated, _ = env.step(action)
 
             # Render the environment with step counter

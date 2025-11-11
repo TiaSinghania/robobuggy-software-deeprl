@@ -96,13 +96,13 @@ class BuggyCourseEnv(gym.Env):
         """
         return np.concatenate([self.sc.get_self_obs(), self.nand.get_other_obs()])
 
-    def _get_info(self) -> None:
+    def _get_info(self) -> dict:
         """
         Return environment info
         """
-        return None
+        return {}
 
-    def reset(self, seed: Optional[int] = None) -> tuple[np.ndarray, None]:
+    def reset(self, seed: Optional[int] = None, **kwargs) -> tuple[np.ndarray, None]:
         """
         Starts a new episode
         Args:
@@ -203,7 +203,7 @@ class BuggyCourseEnv(gym.Env):
             tuple: (observation, reward, terminated, truncated, info)
         """
 
-        self.sc.delta = sc_steering_percentage * self.steer_scale
+        self.sc.delta = sc_steering_percentage[0] * self.steer_scale
         self._update_buggy(self.sc, self.dt)
 
         self.nand.delta = self.nand_controller.compute_control()
