@@ -8,6 +8,8 @@ Can create multiple similar environments!!!
 Controls two buggies:
 SC - (policy controlled) : Buggy
 NAND - Classical Control (Stanley) : Buggy
+
+
 """
 import numpy as np
 import gymnasium as gym
@@ -15,54 +17,55 @@ from util.buggy import Buggy
 from util.trajectory import Trajectory
 from typing import Optional
 from controller.stanley_controller import StanleyController
+from gymnasium.envs.registration import register
 
 NAND_WHEELBASE = 1.3
 SC_WHEELBASE = 1.104
 
 class BuggyCourseEnv(gym.Env):
-    def __init__(self, 
-                 rate : int = 100, 
-                 steer_scale : float = np.pi/9, 
+    def __init__(self,
+                 rate : int = 100,
+                 steer_scale : float = np.pi/9,
                  target_path : str = "scripts/util/buggycourse_sc.json"):
         """
-        Initialize a Buggy Course Environmnet. 
+        Initialize a Buggy Course Environmnet.
 
         Arguments:
         rate (Hz) - Simulation Rate
         steer_scale - Scale action space to full steering range
-        
+
         """
         # Positions
         self.sc_init_state = (589761.40, 4477321.07, -1.91986) #easting, northing, heading
-        
+
         self.nand_init_state = (589751.46, 4477322.07, -1.91986) #easting, northing, heading
-        
+
         self.reset() # Sets up the buggies
 
         self.dt = 1 / rate
         self.steer_scale = steer_scale
 
         self.target_traj = Trajectory(target_path)
-        
+
         target_traj_idx = self.target_traj.get_closest_index_on_path(589693.75, 4477191.05)
         self.target_traj_dist = self.target_traj.get_distance_from_index(target_traj_idx)
 
 
         self.observation_space = gym.spaces.Box(-float('inf'), float('inf'), shape=(7,))
         self.action_space = gym.spaces.Box(-1, 1)
-        
+
 
     def _get_obs(self) -> np.ndarray:
         """
         Observation Space:
-        
+
         SC:
             - easting
             - northing
             - theta
             - speed
             - delta
-        
+
         NAND:
             - easting
             - northing
@@ -84,18 +87,18 @@ class BuggyCourseEnv(gym.Env):
         super().reset(seed=seed)
 
         self.sc = Buggy(
-            e_utm=self.sc_init_state[0], 
+            e_utm=self.sc_init_state[0],
             n_utm=self.sc_init_state[1],
-            speed=12, 
-            theta=self.sc_init_state[2], 
+            speed=12,
+            theta=self.sc_init_state[2],
             wheelbase=SC_WHEELBASE
         )
 
         self.nand = Buggy(
-            e_utm=self.nand_init_state[0], 
+            e_utm=self.nand_init_state[0],
             n_utm=self.nand_init_state[1],
-            speed=6, 
-            theta=self.nand_init_state[2], 
+            speed=6,
+            theta=self.nand_init_state[2],
             wheelbase=NAND_WHEELBASE
         )
         self.nand_controller = StanleyController(self.nand, self.target_traj)
@@ -126,7 +129,7 @@ class BuggyCourseEnv(gym.Env):
                          0.0,
                          speed / wheelbase * np.tan(delta),
                          ])
-    
+
     def _update_buggy(self, buggy: Buggy, dt : float) -> None:
         """
         Uses the `dynamics` function to update the buggies state based on the state and steering angle
@@ -173,10 +176,19 @@ class BuggyCourseEnv(gym.Env):
         reward = self._get_reward()
 
         # Simple environment doesn't have max step limit
-        truncated = False 
+        truncated = False
 
         return self._get_obs(), reward, self.terminated, truncated, self._get_info()
 
     def render(self):
         """Render the environment for human viewing. Maybe just a plot of the trajectories?"""
         raise NotImplementedError()
+
+
+
+if __name__ == "__main__":
+    register(
+        id="BuggyCourseEnv",
+        entry_point="BuggyCourseEnv",
+        max_episode_steps=300,
+    )
