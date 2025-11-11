@@ -185,10 +185,3 @@ class BuggyCourseEnv(gym.Env):
         raise NotImplementedError()
 
 
-
-if __name__ == "__main__":
-    register(
-        id="BuggyCourseEnv",
-        entry_point="BuggyCourseEnv",
-        max_episode_steps=300,
-    )
