@@ -2,7 +2,6 @@ import json
 import time
 
 # from buggy.msg import TrajectoryMsg
-
 import numpy as np
 import utm
 from scipy.interpolate import Akima1DInterpolator, CubicSpline
@@ -23,7 +22,9 @@ class Trajectory:
     Use https://rdudhagra.github.io/eracer-portal/ to make trajectories and save the JSON file
     """
 
-    def __init__(self, json_filepath=None, positions = None, interpolator="CubicSpline") -> None:
+    def __init__(
+        self, json_filepath=None, positions=None, interpolator="CubicSpline"
+    ) -> None:
         """
         Args:
             json_filepath (String): file path to the path json file (begins at /rb_ws)
@@ -48,7 +49,6 @@ class Trajectory:
             # Iterate through the waypoints and extract the positions
             num_waypoints = len(data)
             for i in range(0, num_waypoints):
-
                 waypoint = data[i]
 
                 lat = waypoint["lat"]
@@ -84,12 +84,16 @@ class Trajectory:
 
         # TODO: check units
         # Calculate the distances along the trajectory
-        dt = 0.01 #dt is time step (in seconds (?))
-        ts = np.arange(len(self.positions) - 1, step=dt)  # times corresponding to each position (?)
+        dt = 0.01  # dt is time step (in seconds (?))
+        ts = np.arange(
+            len(self.positions) - 1, step=dt
+        )  # times corresponding to each position (?)
         drdt = self.interpolation(
             ts, nu=1
         )  # Calculate derivatives of interpolated path wrt indices
-        ds = np.sqrt(drdt[:, 0] ** 2 + drdt[:, 1] ** 2) * dt # distances to each interpolated point
+        ds = (
+            np.sqrt(drdt[:, 0] ** 2 + drdt[:, 1] ** 2) * dt
+        )  # distances to each interpolated point
         s = np.cumsum(np.hstack([[0], ds[:-1]]))
         self.distances = s
         self.dt = dt
@@ -252,9 +256,7 @@ class Trajectory:
         dxdt, dydt = self.interpolation(index, nu=1).reshape((-1, 2)).T
         ddxdtt, ddydtt = self.interpolation(index, nu=2).reshape((-1, 2)).T
 
-        curvature = (dxdt * ddydtt - dydt * ddxdtt) / (
-            (dxdt**2 + dydt**2) ** (3 / 2)
-        )
+        curvature = (dxdt * ddydtt - dydt * ddxdtt) / ((dxdt**2 + dydt**2) ** (3 / 2))
 
         return curvature
 
@@ -291,9 +293,7 @@ class Trajectory:
         dxdt, dydt = self.interpolation(index, nu=1).reshape((-1, 2)).T
         ddxdtt, ddydtt = self.interpolation(index, nu=2).reshape((-1, 2)).T
 
-        curvature = (dxdt * ddydtt - dydt * ddxdtt) / (
-            (dxdt**2 + dydt**2) ** (3 / 2)
-        )
+        curvature = (dxdt * ddydtt - dydt * ddxdtt) / ((dxdt**2 + dydt**2) ** (3 / 2))
         theta = np.arctan2(dydt, dxdt)
 
         return np.stack((x, y, theta, np.arctan(wheelbase * curvature)), axis=-1)
@@ -330,7 +330,7 @@ class Trajectory:
         """
         # If end_index is not specified, use the length of the trajectory
         if end_index is None:
-            end_index = len(self.positions) #sketch, 0-indexing where??
+            end_index = len(self.positions)  # sketch, 0-indexing where??
 
         # Floor/ceil the start/end indices
         start_index = max(0, int(np.floor(start_index)))
@@ -339,37 +339,31 @@ class Trajectory:
         # Calculate the distance from the point to each point on the trajectory
         distances = (self.positions[start_index : end_index + 1, 0] - x) ** 2 + (
             self.positions[start_index : end_index + 1, 1] - y
-        ) ** 2 #Don't need to squareroot as it is a relative distance
+        ) ** 2  # Don't need to squareroot as it is a relative distance
 
         min_ind = np.argmin(distances) + start_index
 
-        start_index = max(0, min_ind - 1) #Protection in case min_ind is too low
-        end_index = min(len(self.positions), min_ind + 1)  #Prtoecting in case min_ind too high
-        #Theoretically start_index and end_index are just two apart
+        start_index = max(0, min_ind - 1)  # Protection in case min_ind is too low
+        end_index = min(
+            len(self.positions), min_ind + 1
+        )  # Prtoecting in case min_ind too high
+        # Theoretically start_index and end_index are just two apart
 
         # Now interpolate at a higher resolution to get a more accurate result
         r_interp = self.interpolation(
-            np.linspace(start_index, end_index, subsample_resolution + 1))
-        x_interp, y_interp = r_interp[:, 0], r_interp[:, 1] #x_interp, y_interp are numpy column vectors
+            np.linspace(start_index, end_index, subsample_resolution + 1)
+        )
+        x_interp, y_interp = (
+            r_interp[:, 0],
+            r_interp[:, 1],
+        )  # x_interp, y_interp are numpy column vectors
 
-        distances = (x_interp - x) ** 2 + (y_interp - y) ** 2 #Again distances are relative
+        distances = (x_interp - x) ** 2 + (
+            y_interp - y
+        ) ** 2  # Again distances are relative
 
         # Return the rational index of the closest point
         return (
             np.argmin(distances) / subsample_resolution * (end_index - start_index)
             + start_index
         )
-
-    def pack(self, x, y) -> TrajectoryMsg:
-        traj = TrajectoryMsg()
-        traj.easting = list(self.positions[:, 0])
-        traj.northing = list(self.positions[:, 1])
-        traj.time = time.time()
-        traj.cur_idx = self.get_closest_index_on_path(x,y)
-        return traj
-
-    def unpack(trajMsg : TrajectoryMsg):
-        pos = np.array([trajMsg.easting, trajMsg.northing]).transpose(1, 0)
-        cur_idx = trajMsg.cur_idx
-        return Trajectory(positions=pos), cur_idx
-

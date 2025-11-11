@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 import numpy as np
 
 """
@@ -16,31 +17,32 @@ angle_clip - the max/min value that each buggy can steer (degrees)
 
 """
 
+
 @dataclass
 class Buggy:
     # Buggy State
-    e_utm: float # m
-    n_utm: float # m
-    speed: float # m/s
-    theta: float # rad
+    e_utm: float  # m
+    n_utm: float  # m
+    speed: float  # m/s
+    theta: float  # rad
 
     # Buggy Constants
-    wheelbase: float # m 
-    angle_clip: float = np.pi / 9 # rad
+    wheelbase: float  # m
+    angle_clip: float = np.pi / 9  # rad
 
     # Buggy Control
-    delta: float = 0 # rad
+    delta: float = 0  # rad
 
     def get_state(self) -> np.ndarray:
-        return np.array([self.e_utm, self.n_utm, self.speed, self.theta])
-    
-    def get_control(self) -> np.ndarray:
-        return np.array([self.delta])
-    
-    def get_constants(self) -> np.ndarray:
-        return np.array([self.wheelbase, self.angle_clip])
+        return np.array([self.e_utm, self.n_utm, self.speed, self.theta]).reshape(-1)
 
-    def set_state(self, state : np.ndarray):
+    def get_control(self) -> np.ndarray:
+        return np.array([self.delta]).reshape(-1)
+
+    def get_constants(self) -> np.ndarray:
+        return np.array([self.wheelbase, self.angle_clip]).reshape(-1)
+
+    def set_state(self, state: np.ndarray):
         assert state.shape == (4,)
         self.e_utm = state[0]
         self.n_utm = state[1]
@@ -52,5 +54,3 @@ class Buggy:
 
     def get_other_obs(self) -> np.ndarray:
         return np.array([self.e_utm, self.n_utm])
-
-
