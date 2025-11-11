@@ -360,16 +360,3 @@ class Trajectory:
             + start_index
         )
 
-    def pack(self, x, y) -> TrajectoryMsg:
-        traj = TrajectoryMsg()
-        traj.easting = list(self.positions[:, 0])
-        traj.northing = list(self.positions[:, 1])
-        traj.time = time.time()
-        traj.cur_idx = self.get_closest_index_on_path(x,y)
-        return traj
-
-    def unpack(trajMsg : TrajectoryMsg):
-        pos = np.array([trajMsg.easting, trajMsg.northing]).transpose(1, 0)
-        cur_idx = trajMsg.cur_idx
-        return Trajectory(positions=pos), cur_idx
-

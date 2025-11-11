@@ -1,6 +1,6 @@
 import numpy as np
-from util.trajectory import Trajectory
-from util.buggy import Buggy
+from src.util.trajectory import Trajectory
+from src.util.buggy import Buggy
 
 import utm
 

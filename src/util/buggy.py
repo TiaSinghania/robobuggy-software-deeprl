@@ -32,13 +32,13 @@ class Buggy:
     delta: float = 0 # rad
 
     def get_state(self) -> np.ndarray:
-        return np.array([self.e_utm, self.n_utm, self.speed, self.theta])
+        return np.array([self.e_utm, self.n_utm, self.speed, self.theta], dtype=np.float32).reshape(-1)
     
     def get_control(self) -> np.ndarray:
-        return np.array([self.delta])
+        return np.array([self.delta], dtype=np.float32).reshape(-1)
     
     def get_constants(self) -> np.ndarray:
-        return np.array([self.wheelbase, self.angle_clip])
+        return np.array([self.wheelbase, self.angle_clip], dtype=np.float32).reshape(-1)
 
     def set_state(self, state : np.ndarray):
         assert state.shape == (4,)
@@ -48,9 +48,9 @@ class Buggy:
         self.theta = state[3]
 
     def get_full_obs(self) -> np.ndarray:
-        return np.array([self.e_utm, self.n_utm, self.speed, self.theta, self.delta])
+        return np.array([self.e_utm, self.n_utm, self.speed, self.theta, self.delta], dtype=np.float32)
 
     def get_partial_obs(self) -> np.ndarray:
-        return np.array([self.e_utm, self.n_utm])
+        return np.array([self.e_utm, self.n_utm], dtype=np.float32)
 
 

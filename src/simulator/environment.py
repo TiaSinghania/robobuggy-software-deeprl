@@ -13,10 +13,10 @@ NAND - Classical Control (Stanley) : Buggy
 """
 import numpy as np
 import gymnasium as gym
-from util.buggy import Buggy
-from util.trajectory import Trajectory
+from src.util.buggy import Buggy
+from src.util.trajectory import Trajectory
 from typing import Optional
-from controller.stanley_controller import StanleyController
+from src.controller.stanley_controller import StanleyController
 from gymnasium.envs.registration import register
 
 NAND_WHEELBASE = 1.3
@@ -26,7 +26,7 @@ class BuggyCourseEnv(gym.Env):
     def __init__(self,
                  rate : int = 100,
                  steer_scale : float = np.pi/9,
-                 target_path : str = "scripts/util/buggycourse_sc.json"):
+                 target_path : str = "src/util/buggycourse_sc.json"):
         """
         Initialize a Buggy Course Environmnet.
 
@@ -40,7 +40,6 @@ class BuggyCourseEnv(gym.Env):
 
         self.nand_init_state = (589751.46, 4477322.07, -1.91986) #easting, northing, heading
 
-        self.reset() # Sets up the buggies
 
         self.dt = 1 / rate
         self.steer_scale = steer_scale
@@ -54,6 +53,7 @@ class BuggyCourseEnv(gym.Env):
         self.observation_space = gym.spaces.Box(-float('inf'), float('inf'), shape=(7,))
         self.action_space = gym.spaces.Box(-1, 1)
 
+        self.reset() # Sets up the buggies
 
     def _get_obs(self) -> np.ndarray:
         """
@@ -70,15 +70,15 @@ class BuggyCourseEnv(gym.Env):
             - easting
             - northing
         """
-        return np.concatenate(arrays=[self.sc.get_full_obs(), self.nand.get_partial_obs()])
+        return np.concatenate((self.sc.get_full_obs(), self.nand.get_partial_obs()))
 
-    def _get_info(self) -> None:
+    def _get_info(self) -> dict:
         """
         Return environment info
         """
-        return None
+        return {}
 
-    def reset(self, seed: Optional[int] = None) -> tuple[np.ndarray, None]:
+    def reset(self, seed: Optional[int] = None, **kwargs) -> tuple[np.ndarray, None]:
         """
         Starts a new episode
         Args:
@@ -166,8 +166,8 @@ class BuggyCourseEnv(gym.Env):
         Returns:
             tuple: (observation, reward, terminated, truncated, info)
         """
-
-        self.sc.delta = sc_steering_percentage * self.steer_scale
+        assert sc_steering_percentage.shape == (1,)
+        self.sc.delta = sc_steering_percentage[0] * self.steer_scale
         self._update_buggy(self.sc, self.dt)
 
         self.nand.delta = self.nand_controller.compute_control()
@@ -183,12 +183,3 @@ class BuggyCourseEnv(gym.Env):
     def render(self):
         """Render the environment for human viewing. Maybe just a plot of the trajectories?"""
         raise NotImplementedError()
-
-
-
-if __name__ == "__main__":
-    register(
-        id="BuggyCourseEnv",
-        entry_point="BuggyCourseEnv",
-        max_episode_steps=300,
-    )
