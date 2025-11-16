@@ -30,9 +30,10 @@ class StanleyController:
 
         Returns:
             float (desired steering angle)
+            bool (reached end of path)
         """
         if self.current_traj_index >= self.trajectory.get_num_points() - 1:
-            raise Exception("[Stanley]: Ran out of path to follow!")
+            return 0, True
 
         current_speed = self.buggy.speed
         heading = self.buggy.theta
@@ -83,4 +84,4 @@ class StanleyController:
         steering_cmd = error_heading + cross_track_component
         steering_cmd = np.clip(steering_cmd, -np.pi / 9, np.pi / 9)
 
-        return steering_cmd
+        return steering_cmd, False

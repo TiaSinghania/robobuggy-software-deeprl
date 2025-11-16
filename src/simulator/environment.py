@@ -129,6 +129,7 @@ class BuggyCourseEnv(gym.Env):
         self.nand_controller = StanleyController(self.nand, self.target_traj)
 
         self.terminated = False
+        self.prev_dist = 0.0
         self.step_count = 0
 
         return self._get_obs(), self._get_info()
@@ -187,11 +188,20 @@ class BuggyCourseEnv(gym.Env):
         traj_dist = self.target_traj.get_distance_from_index(traj_idx)
 
         if traj_dist > self.target_traj_dist:
+            reward = 1e5 if not self.terminated else 0
             self.terminated = True  # Crossed the finish line
-        if traj_dist > self.target_traj_dist:
-            self.terminated = True  # Crossed the finish line
+        elif (traj_dist > (self.prev_dist + 1)):
+            # Give a reward for every meter you move forward
+            reward = 10
+            self.prev_dist = traj_dist
+        elif (traj_dist < (self.prev_dist - 1)):
+            # Signifcantly went backwards
+            reward = -10
+        else:
+            # Not going anywhere
+            reward = -0.1
 
-        return -1 * (self.target_traj_dist - traj_dist) ** 2
+        return reward
 
     def step(self, sc_steering_percentage):
         """
@@ -207,7 +217,9 @@ class BuggyCourseEnv(gym.Env):
         self.sc.delta = sc_steering_percentage[0] * self.steer_scale
         self._update_buggy(self.sc, self.dt)
 
-        self.nand.delta = self.nand_controller.compute_control()
+        self.nand.delta, nand_stopped = self.nand_controller.compute_control()
+        if nand_stopped:
+            self.nand.speed = 0.0
         self._update_buggy(self.nand, self.dt)
 
         reward = self._get_reward()
@@ -280,6 +292,18 @@ class BuggyCourseEnv(gym.Env):
             markersize=12,
             label=f"NAND Buggy (Stanley) - Speed: {self.nand.speed:.1f} m/s",
         )
+
+        # Plot Previous SC Spot
+        prev_east, prev_north = self.target_traj.get_position_by_distance(self.prev_dist)
+        self.ax.plot(
+            prev_east,
+            prev_north,
+            "bo",
+            markersize=6,
+            label=f"Previous SC Spot",
+        )
+
+
         # Draw heading arrow for NAND
         self.ax.arrow(
             self.nand.e_utm,

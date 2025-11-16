@@ -3,13 +3,15 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
+from stable_baselines3 import PPO
+from stable_baselines3.common.base_class import BaseAlgorithm
 
 sys.path.append("scripts")
 
 from src.simulator.environment import BuggyCourseEnv
 
 
-def visualize_environment(render_every_n_steps=5):
+def visualize_environment(policy : BaseAlgorithm, render_every_n_steps=5):
     """Run the buggy environment with visualization using env.render()."""
     env = BuggyCourseEnv(rate=100, render_every_n_steps=render_every_n_steps)
 
@@ -23,7 +25,7 @@ def visualize_environment(render_every_n_steps=5):
         step = 0
         while not terminated:
             # Random action for demonstration (replace with policy later)
-            action = np.array([np.random.uniform(-0.3, 0.3)]).reshape(-1)
+            action, _states = policy.predict(obs)
             obs, reward, terminated, truncated, _ = env.step(action)
 
             # Render the environment with step counter
