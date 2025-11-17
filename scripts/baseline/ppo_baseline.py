@@ -13,6 +13,13 @@ def main():
         action="store_true",
         help="Train a new PPO model instead of loading an existing one.",
     )
+    parser.add_argument(
+        "--file",
+        "-f",
+        type=str,
+        default="buggy-sim",
+        help="Filename to save model visualization",
+    )
     args = parser.parse_args()
 
     env = gym.make("BuggyCourseEnv-v1")
@@ -20,14 +27,14 @@ def main():
     if args.train:
         print("Training PPO model...")
         model = PPO("MlpPolicy", env, verbose=1)
-        model.learn(total_timesteps=2500000)
+        model.learn(total_timesteps=1000000)
         model.save("ppo_buggy-course")
         print("Training complete. Model saved to ppo_buggy-course.")
     else:
         print("Loading existing PPO model...")
         model = PPO.load("ppo_buggy-course")
 
-    visualize_environment(policy=model)
+    visualize_environment(policy=model, filename=args.file)
 
 
 if __name__ == "__main__":
