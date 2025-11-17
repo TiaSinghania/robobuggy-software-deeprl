@@ -370,3 +370,8 @@ class Trajectory:
             np.argmin(distances) / subsample_resolution * (end_index - start_index)
             + start_index
         )
+
+    def get_distance_to_path(self, x, y):
+        closest_index = self.get_closest_index_on_path(x, y)
+        x_target, y_target = self.get_position_by_index(closest_index)
+        return np.sqrt((x - x_target) ** 2 + (y - y_target) ** 2)

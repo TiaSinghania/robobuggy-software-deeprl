@@ -36,6 +36,8 @@ class BuggyCourseEnv(gym.Env):
         rate: int = 100,
         steer_scale: float = np.pi / 9,
         target_path: str = "src/util/buggycourse_sc.json",
+        left_curb_path: str = "src/util/left_curb.json",
+        right_curb_path: str = "src/util/right_curb.json",
         render_every_n_steps: int = 5,
     ):
         """
@@ -64,6 +66,8 @@ class BuggyCourseEnv(gym.Env):
         self.render_every_n_steps = render_every_n_steps
 
         self.target_traj = Trajectory(target_path)
+        self.left_curb = Trajectory(left_curb_path)
+        self.right_curb = Trajectory(right_curb_path)
 
         target_traj_idx = self.target_traj.get_closest_index_on_path(
             589693.75 - UTM_EAST_ZERO, 4477191.05 - UTM_NORTH_ZERO
@@ -213,6 +217,15 @@ class BuggyCourseEnv(gym.Env):
 
         return reward
 
+    def _check_crash(self) -> bool:
+        sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
+        if (
+            self.left_curb.get_distance_to_path(sc_x, sc_y) < 0.1
+            or self.right_curb.get_distance_to_path(sc_x, sc_y) < 0.1
+        ):
+            return True
+        return False
+
     def step(self, sc_steering_percentage):
         """
         Executes one timestep within environment
@@ -233,6 +246,10 @@ class BuggyCourseEnv(gym.Env):
         self._update_buggy(self.nand, self.dt)
 
         reward = self._get_reward()
+
+        if self._check_crash():
+            self.terminated = True
+            reward -= 1e4  # Crash Penalty
 
         self.step_count += 1
 
@@ -270,6 +287,44 @@ class BuggyCourseEnv(gym.Env):
             "k--",
             linewidth=2,
             label="Reference Trajectory",
+            alpha=0.5,
+        )
+
+        # Plot curb
+        curb_positions = np.concat(
+            [
+                np.array(
+                    [
+                        self.left_curb.get_position_by_distance(dist)
+                        for dist in np.linspace(
+                            0,
+                            self.left_curb.distances[-1],
+                            len(self.left_curb.distances) // 10,
+                        )
+                    ]
+                ),
+                np.full(
+                    (1, 2), np.nan
+                ),  # Splits the line segment so both curbs aren't conjoined
+                np.array(
+                    [
+                        self.right_curb.get_position_by_distance(dist)
+                        for dist in np.linspace(
+                            0,
+                            self.right_curb.distances[-1],
+                            len(self.right_curb.distances) // 10,
+                        )
+                    ]
+                ),
+            ],
+            axis=0,
+        )
+        self.ax.plot(
+            curb_positions[:, 0],
+            curb_positions[:, 1],
+            "k",
+            linewidth=1,
+            label="Curbs",
             alpha=0.5,
         )
 
