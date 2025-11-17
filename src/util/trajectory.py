@@ -5,6 +5,7 @@ import time
 import numpy as np
 import utm
 from scipy.interpolate import Akima1DInterpolator, CubicSpline
+import src.simulator.environment
 
 
 class Trajectory:
@@ -56,6 +57,8 @@ class Trajectory:
 
                 # Convert to world coordinates
                 x, y, _, _ = utm.from_latlon(lat, lon)
+                x -= src.simulator.environment.UTM_EAST_ZERO
+                y -= src.simulator.environment.UTM_NORTH_ZERO
                 positions.append([x, y])
 
             positions = np.array(positions)

@@ -8,8 +8,11 @@ from scripts.visualize import visualize_environment
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train", action="store_true",
-                        help="Train a new PPO model instead of loading an existing one.")
+    parser.add_argument(
+        "--train",
+        action="store_true",
+        help="Train a new PPO model instead of loading an existing one.",
+    )
     args = parser.parse_args()
 
     env = gym.make("BuggyCourseEnv-v1")

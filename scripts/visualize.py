@@ -11,7 +11,7 @@ sys.path.append("scripts")
 from src.simulator.environment import BuggyCourseEnv
 
 
-def visualize_environment(policy : BaseAlgorithm, render_every_n_steps=5):
+def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=5):
     """Run the buggy environment with visualization using env.render()."""
     env = BuggyCourseEnv(rate=100, render_every_n_steps=render_every_n_steps)
 

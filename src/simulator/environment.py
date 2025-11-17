@@ -26,6 +26,9 @@ from src.util.trajectory import Trajectory
 NAND_WHEELBASE = 1.3
 SC_WHEELBASE = 1.104
 
+UTM_EAST_ZERO = 589761.40
+UTM_NORTH_ZERO = 4477321.07
+
 
 class BuggyCourseEnv(gym.Env):
     def __init__(
@@ -45,14 +48,14 @@ class BuggyCourseEnv(gym.Env):
         """
         # Positions
         self.sc_init_state = (
-            589761.40,
-            4477321.07,
+            589761.40 - UTM_EAST_ZERO,
+            4477321.07 - UTM_NORTH_ZERO,
             -1.91986,
         )  # easting, northing, heading
 
         self.nand_init_state = (
-            589751.46,
-            4477322.07,
+            589751.46 - UTM_EAST_ZERO,
+            4477322.07 - UTM_NORTH_ZERO,
             -1.91986,
         )  # easting, northing, heading
 
@@ -63,14 +66,18 @@ class BuggyCourseEnv(gym.Env):
         self.target_traj = Trajectory(target_path)
 
         target_traj_idx = self.target_traj.get_closest_index_on_path(
-            589693.75, 4477191.05
+            589693.75 - UTM_EAST_ZERO, 4477191.05 - UTM_NORTH_ZERO
         )
         self.target_traj_dist = self.target_traj.get_distance_from_index(
             target_traj_idx
         )
 
-        self.observation_space = gym.spaces.Box(-float("inf"), float("inf"), shape=(7,))
-        self.action_space = gym.spaces.Box(-1, 1)
+        self.observation_space = gym.spaces.Box(
+            low=np.ones((7,), dtype=np.float32) * -float("inf"),
+            high=np.ones((7,), dtype=np.float32) * float("inf"),
+            shape=(7,),
+        )
+        self.action_space = gym.spaces.Box(low=-1.0, high=1)
 
         # Visualization
         self.fig = None
@@ -132,7 +139,9 @@ class BuggyCourseEnv(gym.Env):
         self.prev_dist = 0.0
         self.step_count = 0
 
-        return self._get_obs(), self._get_info()
+        obs = self._get_obs()
+
+        return obs, self._get_info()
 
     def _dynamics(self, state: np.ndarray, control: np.ndarray, constants: np.ndarray):
         """
@@ -157,7 +166,8 @@ class BuggyCourseEnv(gym.Env):
                 speed * np.sin(theta),
                 0.0,
                 speed / wheelbase * np.tan(delta),
-            ]
+            ],
+            dtype=np.float32,
         )
 
     def _update_buggy(self, buggy: Buggy, dt: float) -> None:
@@ -190,11 +200,11 @@ class BuggyCourseEnv(gym.Env):
         if traj_dist > self.target_traj_dist:
             reward = 1e5 if not self.terminated else 0
             self.terminated = True  # Crossed the finish line
-        elif (traj_dist > (self.prev_dist + 1)):
+        elif traj_dist > (self.prev_dist + 1):
             # Give a reward for every meter you move forward
             reward = 10
             self.prev_dist = traj_dist
-        elif (traj_dist < (self.prev_dist - 1)):
+        elif traj_dist < (self.prev_dist - 1):
             # Signifcantly went backwards
             reward = -10
         else:
@@ -294,7 +304,9 @@ class BuggyCourseEnv(gym.Env):
         )
 
         # Plot Previous SC Spot
-        prev_east, prev_north = self.target_traj.get_position_by_distance(self.prev_dist)
+        prev_east, prev_north = self.target_traj.get_position_by_distance(
+            self.prev_dist
+        )
         self.ax.plot(
             prev_east,
             prev_north,
@@ -302,7 +314,6 @@ class BuggyCourseEnv(gym.Env):
             markersize=6,
             label=f"Previous SC Spot",
         )
-
 
         # Draw heading arrow for NAND
         self.ax.arrow(
@@ -317,7 +328,7 @@ class BuggyCourseEnv(gym.Env):
         )
 
         # Plot finish line
-        finish_e, finish_n = 589693.75, 4477191.05
+        finish_e, finish_n = 589693.75 - UTM_EAST_ZERO, 4477191.05 - UTM_NORTH_ZERO
         self.ax.plot(finish_e, finish_n, "g*", markersize=20, label="Finish Line")
 
         # Add step counter prominently
