@@ -98,8 +98,8 @@ class BuggyCourseEnv(gym.Env):
         SC:
             - easting
             - northing
-            - theta
             - speed
+            - theta
             - delta
 
         PRIVILEGED:
@@ -323,11 +323,11 @@ class BuggyCourseEnv(gym.Env):
             self.sc.e_utm,
             self.sc.n_utm,
             "bo",
-            markersize=12,
-            label=f"SC Buggy (Policy) - Speed: {self.sc.speed:.1f} m/s",
+            markersize=6,
+            label=f"SC Buggy (Policy) - Speed: {self.sc.speed:.1f} m/s - Steering {np.rad2deg(self.sc.delta):.1f}°",
         )
         # Draw heading arrow for SC
-        arrow_length = 15
+        arrow_length = 8
         self.ax.arrow(
             self.sc.e_utm,
             self.sc.n_utm,
@@ -347,7 +347,7 @@ class BuggyCourseEnv(gym.Env):
             prev_east,
             prev_north,
             "bo",
-            markersize=6,
+            markersize=3,
             label=f"Previous SC Spot",
         )
 
