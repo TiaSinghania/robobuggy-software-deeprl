@@ -27,7 +27,7 @@ def main():
     if args.train:
         print("Training PPO model...")
         model = PPO("MlpPolicy", env, verbose=1)
-        model.learn(total_timesteps=1000000)
+        model.learn(total_timesteps=int(1e7))
         model.save("ppo_buggy-course")
         print("Training complete. Model saved to ppo_buggy-course.")
     else:

@@ -29,6 +29,8 @@ SC_WHEELBASE = 1.104
 UTM_EAST_ZERO = 589761.40
 UTM_NORTH_ZERO = 4477321.07
 
+OBS_SIZE = 8
+
 
 class BuggyCourseEnv(gym.Env):
     def __init__(
@@ -77,9 +79,9 @@ class BuggyCourseEnv(gym.Env):
         )
 
         self.observation_space = gym.spaces.Box(
-            low=np.ones((7,), dtype=np.float32) * -float("inf"),
-            high=np.ones((7,), dtype=np.float32) * float("inf"),
-            shape=(7,),
+            low=np.ones((OBS_SIZE,), dtype=np.float32) * -float("inf"),
+            high=np.ones((OBS_SIZE,), dtype=np.float32) * float("inf"),
+            shape=(OBS_SIZE,),
         )
         self.action_space = gym.spaces.Box(low=-1.0, high=1)
 
@@ -90,6 +92,12 @@ class BuggyCourseEnv(gym.Env):
         self.window_closed = False
 
         self.reset()  # Sets up the buggies
+
+    def _get_privileged_obs(self) -> np.ndarray:
+        sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
+        left_dist = self.left_curb.get_distance_to_path(sc_x, sc_y)
+        right_dist = self.right_curb.get_distance_to_path(sc_x, sc_y)
+        return np.array([left_dist - right_dist], dtype=np.float32)
 
     def _get_obs(self) -> np.ndarray:
         """
@@ -105,8 +113,17 @@ class BuggyCourseEnv(gym.Env):
         NAND:
             - easting
             - northing
+
+        PRIVILEGED:
+            - distance from center
         """
-        return np.concatenate([self.sc.get_full_obs(), self.nand.get_partial_obs()])
+        return np.concatenate(
+            [
+                self.sc.get_full_obs(),
+                self.nand.get_partial_obs(),
+                self._get_privileged_obs(),
+            ]
+        )
 
     def _get_info(self) -> dict:
         """
@@ -206,11 +223,11 @@ class BuggyCourseEnv(gym.Env):
             self.terminated = True  # Crossed the finish line
         elif traj_dist > (self.prev_dist + 1):
             # Give a reward for every meter you move forward
-            reward = 10
+            reward = 1
             self.prev_dist = traj_dist
         elif traj_dist < (self.prev_dist - 1):
             # Signifcantly went backwards
-            reward = -10
+            reward = -1
         else:
             # Not going anywhere
             reward = -0.1
