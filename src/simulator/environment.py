@@ -239,7 +239,7 @@ class BuggyCourseEnv(gym.Env):
 
         if self._check_crash():
             self.terminated = True
-            reward -= 1e4  # Crash Penalty
+            reward -= 1e3  # Crash Penalty
 
         self.step_count += 1
 

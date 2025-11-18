@@ -53,13 +53,15 @@ def main():
             bc_trainer=bc_trainer,
             rng=rng,
         )
-        dagger_trainer.train(8000)
+        dagger_trainer.train(int(1e6))
         model = dagger_trainer.policy
         dagger_trainer.save_trainer()
         print("Training complete. Model saved to dagger-buggy-course")
 
     else:
-        dagger_trainer = reconstruct_trainer(scratch_dir="./scratch_dagger", venv=vecenv)
+        dagger_trainer = reconstruct_trainer(
+            scratch_dir="./scratch_dagger", venv=vecenv
+        )
         model = dagger_trainer.policy
 
     visualize_environment(policy=model, filename=args.file)
