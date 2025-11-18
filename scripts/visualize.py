@@ -14,7 +14,7 @@ sys.path.append("scripts")
 from src.simulator.environment import BuggyCourseEnv
 
 
-def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=5, filename=""):
+def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, filename=""):
     """Run the buggy environment with visualization using env.render()."""
     env = BuggyCourseEnv(rate=100, render_every_n_steps=render_every_n_steps)
     env.render()
@@ -42,7 +42,7 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=5, filenam
                 env.render()
 
                 # Grab current frame from env.fig
-                if step % 10 == 0:
+                if step % 2 * render_every_n_steps == 0:
                     writer.grab_frame()
 
                 step += 1
