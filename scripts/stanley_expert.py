@@ -20,7 +20,6 @@ class StanleyPolicy(policies.BasePolicy):
             **kwargs,
         )
         self.trajectory = Trajectory(reference_traj_path)
-        self.current_traj_index = 0
 
     def _predict(
         self, observation: PyTorchObs, deterministic: bool = False
@@ -30,9 +29,6 @@ class StanleyPolicy(policies.BasePolicy):
             1,
             6,
         ), f"Dimensions {observation.ndim}, Shape {observation.shape}"
-
-        if self.current_traj_index >= self.trajectory.get_num_points() - 1:
-            return torch.Tensor([0], device=observation.device)
 
         current_speed = observation[0, 2].item()
         heading = observation[0, 3].item()
@@ -45,28 +41,23 @@ class StanleyPolicy(policies.BasePolicy):
         traj_index = self.trajectory.get_closest_index_on_path(
             front_x,
             front_y,
-            start_index=self.current_traj_index - 20,
-            end_index=self.current_traj_index + 50,
         )
-        self.current_traj_index = max(traj_index, self.current_traj_index)
+
+        if traj_index >= self.trajectory.get_num_points() - 1:
+            return torch.Tensor([0], device=observation.device)
 
         # Use heading at the closest index
-        ref_heading = self.trajectory.get_heading_by_index(self.current_traj_index)
+        ref_heading = self.trajectory.get_heading_by_index(traj_index)
 
         error_heading = ref_heading - heading
         error_heading = np.arctan2(
             np.sin(error_heading), np.cos(error_heading)
         )  # Bounds error_heading
-        print("HEADING: ", error_heading)
 
         # Calculate cross track error by finding the distance from the buggy to the tangent line of
         # the reference trajectory
-        closest_position = self.trajectory.get_position_by_index(
-            self.current_traj_index
-        )
-        next_position = self.trajectory.get_position_by_index(
-            self.current_traj_index + 0.0001
-        )
+        closest_position = self.trajectory.get_position_by_index(traj_index)
+        next_position = self.trajectory.get_position_by_index(traj_index + 0.0001)
         x1 = closest_position[0]
         y1 = closest_position[1]
         x2 = next_position[0]
@@ -74,14 +65,11 @@ class StanleyPolicy(policies.BasePolicy):
         error_dist = -((x - x1) * (y2 - y1) - (y - y1) * (x2 - x1)) / np.sqrt(
             (y2 - y1) ** 2 + (x2 - x1) ** 2
         )
-        print("DIST: ", error_dist)
 
         cross_track_component = -np.arctan2(
             self.CROSS_TRACK_GAIN * error_dist,
             current_speed + self.K_SOFT,
         )
-        print("SPEED: ", current_speed)
-        print("CROSS TRACK COMP: ", cross_track_component)
 
         # Determine steering_command
         steering_cmd = error_heading + cross_track_component
