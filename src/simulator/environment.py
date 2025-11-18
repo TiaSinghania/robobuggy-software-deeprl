@@ -308,7 +308,7 @@ class BuggyCourseEnv(gym.Env):
         )
 
         # Plot curb
-        curb_positions = np.concat(
+        curb_positions = np.concatenate(
             [
                 np.array(
                     [
