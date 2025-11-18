@@ -7,7 +7,6 @@ Can create multiple similar environments!!!
 
 Controls two buggies:
 SC - (policy controlled) : Buggy
-NAND - Classical Control (Stanley) : Buggy
 
 
 """
@@ -23,13 +22,12 @@ from src.controller.stanley_controller import StanleyController
 from src.util.buggy import Buggy
 from src.util.trajectory import Trajectory
 
-NAND_WHEELBASE = 1.3
 SC_WHEELBASE = 1.104
 
 UTM_EAST_ZERO = 589761.40
 UTM_NORTH_ZERO = 4477321.07
 
-OBS_SIZE = 8
+OBS_SIZE = 6
 
 
 class BuggyCourseEnv(gym.Env):
@@ -54,12 +52,6 @@ class BuggyCourseEnv(gym.Env):
         self.sc_init_state = (
             589761.40 - UTM_EAST_ZERO,
             4477321.07 - UTM_NORTH_ZERO,
-            -1.91986,
-        )  # easting, northing, heading
-
-        self.nand_init_state = (
-            589751.46 - UTM_EAST_ZERO,
-            4477322.07 - UTM_NORTH_ZERO,
             -1.91986,
         )  # easting, northing, heading
 
@@ -110,17 +102,12 @@ class BuggyCourseEnv(gym.Env):
             - speed
             - delta
 
-        NAND:
-            - easting
-            - northing
-
         PRIVILEGED:
             - distance from center
         """
         return np.concatenate(
             [
                 self.sc.get_full_obs(),
-                self.nand.get_partial_obs(),
                 self._get_privileged_obs(),
             ]
         )
@@ -146,15 +133,6 @@ class BuggyCourseEnv(gym.Env):
             theta=self.sc_init_state[2],
             wheelbase=SC_WHEELBASE,
         )
-
-        self.nand = Buggy(
-            e_utm=self.nand_init_state[0],
-            n_utm=self.nand_init_state[1],
-            speed=6,
-            theta=self.nand_init_state[2],
-            wheelbase=NAND_WHEELBASE,
-        )
-        self.nand_controller = StanleyController(self.nand, self.target_traj)
 
         self.terminated = False
         self.prev_dist = 0.0
@@ -256,11 +234,6 @@ class BuggyCourseEnv(gym.Env):
         assert sc_steering_percentage.shape == (1,)
         self.sc.delta = sc_steering_percentage[0] * self.steer_scale
         self._update_buggy(self.sc, self.dt)
-
-        self.nand.delta, nand_stopped = self.nand_controller.compute_control()
-        if nand_stopped:
-            self.nand.speed = 0.0
-        self._update_buggy(self.nand, self.dt)
 
         reward = self._get_reward()
 
@@ -366,15 +339,6 @@ class BuggyCourseEnv(gym.Env):
             ec="blue",
         )
 
-        # Plot NAND buggy (Stanley controller)
-        self.ax.plot(
-            self.nand.e_utm,
-            self.nand.n_utm,
-            "ro",
-            markersize=12,
-            label=f"NAND Buggy (Stanley) - Speed: {self.nand.speed:.1f} m/s",
-        )
-
         # Plot Previous SC Spot
         prev_east, prev_north = self.target_traj.get_position_by_distance(
             self.prev_dist
@@ -385,18 +349,6 @@ class BuggyCourseEnv(gym.Env):
             "bo",
             markersize=6,
             label=f"Previous SC Spot",
-        )
-
-        # Draw heading arrow for NAND
-        self.ax.arrow(
-            self.nand.e_utm,
-            self.nand.n_utm,
-            arrow_length * np.cos(self.nand.theta),
-            arrow_length * np.sin(self.nand.theta),
-            head_width=2,
-            head_length=2,
-            fc="red",
-            ec="red",
         )
 
         # Plot finish line
