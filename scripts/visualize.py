@@ -1,5 +1,6 @@
 import argparse
 import sys
+import os
 
 from datetime import datetime
 
@@ -20,9 +21,15 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, filena
     env.render()
 
     metadata = dict(title="Buggy Simulation", artist="Mehul Goel")
+
     writer = FFMpegWriter(fps=int(0.1 / env.dt), metadata=metadata)
 
-    filename = f"videos/{filename}-{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.mp4"
+    # Ensure the directory for the output file exists
+    output_dir = "videos"
+    os.makedirs(output_dir, exist_ok=True)
+    filename = (
+        f"{output_dir}/{filename}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.mp4"
+    )
 
     obs, _ = env.reset()
     terminated = False

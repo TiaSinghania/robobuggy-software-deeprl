@@ -27,7 +27,7 @@ class StanleyPolicy(policies.BasePolicy):
         assert isinstance(observation, torch.Tensor)
         assert observation.ndim == 2 and observation.shape == (
             1,
-            6,
+            7,
         ), f"Dimensions {observation.ndim}, Shape {observation.shape}"
 
         current_speed = observation[0, 2].item()

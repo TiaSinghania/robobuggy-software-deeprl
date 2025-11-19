@@ -27,7 +27,7 @@ SC_WHEELBASE = 1.104
 UTM_EAST_ZERO = 589761.40
 UTM_NORTH_ZERO = 4477321.07
 
-OBS_SIZE = 6
+OBS_SIZE = 7
 
 
 class BuggyCourseEnv(gym.Env):
@@ -63,6 +63,19 @@ class BuggyCourseEnv(gym.Env):
         self.left_curb = Trajectory(left_curb_path)
         self.right_curb = Trajectory(right_curb_path)
 
+        # --- Pre-compute curb segments for ray casting ---
+        # Combine left and right curbs into a single list of segments
+        # Shape: (N, 2, 2) -> N segments, each has Start(x,y) and End(x,y)
+        left_pos = self.left_curb.positions
+        right_pos = self.right_curb.positions
+
+        left_segs = np.stack([left_pos[:-1], left_pos[1:]], axis=1)
+        right_segs = np.stack([right_pos[:-1], right_pos[1:]], axis=1)
+
+        self.curb_segments = np.concatenate([left_segs, right_segs], axis=0)
+        self.ray_hit_point = None
+        # -------------------------------------------------
+
         target_traj_idx = self.target_traj.get_closest_index_on_path(
             589693.75 - UTM_EAST_ZERO, 4477191.05 - UTM_NORTH_ZERO
         )
@@ -89,7 +102,65 @@ class BuggyCourseEnv(gym.Env):
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
         left_dist = self.left_curb.get_distance_to_path(sc_x, sc_y)
         right_dist = self.right_curb.get_distance_to_path(sc_x, sc_y)
-        return np.array([left_dist - right_dist], dtype=np.float32)
+
+        # Calculate distance to curb ahead
+        dist_ahead, hit_point = self._get_ray_intersection(
+            ray_origin=(sc_x, sc_y), ray_heading=self.sc.theta
+        )
+        self.ray_hit_point = hit_point
+
+        # Clip distance to a reasonable sensor range (e.g., 50m)
+        print(dist_ahead)
+        dist_ahead = np.clip(dist_ahead, 0, 50.0)
+
+        return np.array([left_dist - right_dist, dist_ahead], dtype=np.float32)
+
+    def _get_ray_intersection(
+        self, ray_origin, ray_heading
+    ) -> tuple[float, Optional[np.ndarray]]:
+        """
+        Calculates the distance from ray_origin along ray_heading to the nearest curb segment.
+        Uses vectorized Cramer's rule for line segment intersection.
+        """
+        O = np.array(ray_origin)
+        D = np.array([np.cos(ray_heading), np.sin(ray_heading)])
+
+        # Segments: Q = A + u(B-A)
+        A = self.curb_segments[:, 0, :]
+        B = self.curb_segments[:, 1, :]
+        V = B - A
+        W = O - A
+
+        # Solve system: tD - uV = -W  =>  [D, -V] * [t, u]^T = -W
+        # Determinant = D x (-V) = V x D
+        det = V[:, 0] * D[1] - V[:, 1] * D[0]
+
+        # Filter parallel lines to avoid division by zero
+        non_parallel = np.abs(det) > 1e-8
+
+        # t = (W x V) / det
+        WxV = W[:, 0] * V[:, 1] - W[:, 1] * V[:, 0]
+        t = np.full(len(det), np.inf)
+        t[non_parallel] = WxV[non_parallel] / det[non_parallel]
+
+        # u = (W x D) / det
+        WxD = W[:, 0] * D[1] - W[:, 1] * D[0]
+        u = np.full(len(det), -1.0)
+        u[non_parallel] = WxD[non_parallel] / det[non_parallel]
+
+        # Intersection criteria:
+        # 1. 0 <= u <= 1 (intersection is within the segment endpoints)
+        # 2. t > 0 (intersection is in front of the ray, not behind)
+        mask = (u >= 0) & (u <= 1) & (t > 0)
+
+        valid_t = t[mask]
+
+        if len(valid_t) == 0:
+            return float("inf"), None
+
+        min_t = np.min(valid_t)
+        hit_point = O + min_t * D
+        return min_t, hit_point
 
     def _get_obs(self) -> np.ndarray:
         """
@@ -338,6 +409,23 @@ class BuggyCourseEnv(gym.Env):
             fc="blue",
             ec="blue",
         )
+
+        # Plot Ray Intersection
+        if self.ray_hit_point is not None:
+            self.ax.plot(
+                [self.sc.e_utm, self.ray_hit_point[0]],
+                [self.sc.n_utm, self.ray_hit_point[1]],
+                "r--",
+                linewidth=1,
+                label="Curb Ray",
+            )
+            self.ax.plot(
+                self.ray_hit_point[0],
+                self.ray_hit_point[1],
+                "rx",
+                markersize=10,
+                label="Intersection",
+            )
 
         # Plot Previous SC Spot
         prev_east, prev_north = self.target_traj.get_position_by_distance(
