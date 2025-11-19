@@ -8,24 +8,29 @@ from imitation.algorithms.dagger import SimpleDAggerTrainer
 from imitation.util.util import make_vec_env
 from imitation.policies.serialize import load_policy
 from imitation.algorithms.dagger import reconstruct_trainer
+from imitation.util.logger import configure
 from src.simulator.environment import BuggyCourseEnv
-import src.policies.stanley_policy
 from src.policy_wrappers.policy_wrapper import PolicyWrapper
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
+import os
 
 
 class DAgger_Wrapper(PolicyWrapper):
 
-    def __init__(self, **kwargs):
-        print(kwargs)
+    def __init__(self, reference_traj_path, **kwargs):
         super().__init__(**kwargs)
 
         rng = np.random.default_rng(0)
         self.env = make_vec_env(self.env.unwrapped.spec.id, rng=rng, n_envs=1)
-        self.log_path = self.dirpath + "/dagger"
+        self.demo_path = self.dirpath + "/dagger_demos"
+        self.log_path = self.dirpath + "/logs/"
         expert = load_policy(
             "stanley-policy",
             venv=self.env,
-            reference_traj_path="src/util/buggycourse_sc.json",
+            reference_traj_path=reference_traj_path,
         )
         bc_trainer = bc.BC(
             observation_space=self.env.observation_space,
@@ -34,7 +39,7 @@ class DAgger_Wrapper(PolicyWrapper):
         )
         self.dagger_trainer = SimpleDAggerTrainer(
             venv=self.env,
-            scratch_dir=self.log_path,
+            scratch_dir=self.demo_path,
             expert_policy=expert,
             bc_trainer=bc_trainer,
             rng=rng,
@@ -44,6 +49,7 @@ class DAgger_Wrapper(PolicyWrapper):
     def train(self, timesteps):
         print("Training DAgger model...")
         self.dagger_trainer.train(timesteps)
+
         print("Training complete. ")
 
     def save(
