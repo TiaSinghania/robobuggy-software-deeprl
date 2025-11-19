@@ -7,7 +7,6 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 import numpy as np
-from stable_baselines3 import PPO
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 sys.path.append("scripts")
@@ -15,7 +14,7 @@ sys.path.append("scripts")
 from src.simulator.environment import BuggyCourseEnv
 
 
-def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, filename=""):
+def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""):
     """Run the buggy environment with visualization using env.render()."""
     env = BuggyCourseEnv(rate=100, render_every_n_steps=render_every_n_steps)
     env.render()
@@ -24,12 +23,7 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, filena
 
     writer = FFMpegWriter(fps=int(0.1 / env.dt), metadata=metadata)
 
-    # Ensure the directory for the output file exists
-    output_dir = "videos"
-    os.makedirs(output_dir, exist_ok=True)
-    filename = (
-        f"{output_dir}/{filename}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.mp4"
-    )
+    filename = f"{dir}/rollout.mp4"
 
     obs, _ = env.reset()
     terminated = False
