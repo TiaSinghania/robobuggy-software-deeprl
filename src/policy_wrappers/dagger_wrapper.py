@@ -15,6 +15,8 @@ from src.policy_wrappers.policy_wrapper import PolicyWrapper
 import matplotlib.pyplot as plt
 import pandas as pd
 
+import os
+
 
 class DAgger_Wrapper(PolicyWrapper):
 
@@ -23,8 +25,9 @@ class DAgger_Wrapper(PolicyWrapper):
 
         rng = np.random.default_rng(0)
         self.env = make_vec_env(self.env.unwrapped.spec.id, rng=rng, n_envs=1)
-        self.log_path = self.dirpath + "/dagger"
-        self.logger = configure(self.log_path, ('log', 'csv'))
+        self.demo_path = self.dirpath + "/dagger_demos"
+        self.log_path = self.dirpath + "/logs/"
+        self.logger = configure(self.log_path, ["tensorboard", "log", "csv"])
         expert = load_policy(
             "stanley-policy",
             venv=self.env,
@@ -37,14 +40,13 @@ class DAgger_Wrapper(PolicyWrapper):
         )
         self.dagger_trainer = SimpleDAggerTrainer(
             venv=self.env,
-            scratch_dir=self.log_path,
+            scratch_dir=self.demo_path,
             expert_policy=expert,
             bc_trainer=bc_trainer,
             rng=rng,
-            custom_logger=self.logger
+            custom_logger=self.logger,
         )
         self.policy = self.dagger_trainer.policy
-
 
     def train(self, timesteps):
         print("Training DAgger model...")
