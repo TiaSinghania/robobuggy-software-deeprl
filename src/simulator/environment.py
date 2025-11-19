@@ -37,7 +37,7 @@ DIST_AHEAD_MAX = 100
 class BuggyCourseEnv(gym.Env):
     def __init__(
         self,
-        rate: int = 100,
+        rate: int = 20,
         steer_scale: float = np.pi / 9,
         target_path: str = "src/util/buggycourse_safe.json",
         left_curb_path: str = "src/util/left_curb.json",

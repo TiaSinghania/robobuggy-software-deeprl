@@ -46,7 +46,7 @@ def main():
         dirpath = f"./logs/{now}-{args.dirname}-{args.policy}-{args.timesteps}"
     else:
         dirpath = f"./logs/{args.dirname}"
-    env = gym.make("BuggyCourseEnv-v1")
+    env = gym.make("BuggyCourseEnv-v1", rate=20, max_episode_steps=4000)
     policy_wrapper = None
     match args.policy:
         case "random":

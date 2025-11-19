@@ -24,7 +24,13 @@ class DAgger_Wrapper(PolicyWrapper):
         super().__init__(**kwargs)
 
         rng = np.random.default_rng(0)
-        self.env = make_vec_env(self.env.unwrapped.spec.id, rng=rng, n_envs=1)
+        self.env = make_vec_env(
+            self.env.unwrapped.spec.id,
+            rng=rng,
+            n_envs=1,
+            max_episode_steps=4000,
+            env_make_kwargs={"rate": 20},
+        )
         self.demo_path = self.dirpath + "/dagger_demos"
         self.log_path = self.dirpath + "/logs/"
         expert = load_policy(
