@@ -60,12 +60,12 @@ def main():
 
     if args.train:
         policy_wrapper.train(args.timesteps)
-        policy_wrapper.save(f"{policy_wrapper}_model")
+        policy_wrapper.save()
 
     else:
-        policy_wrapper = policy_wrapper.load(f"{policy_wrapper}_model")
+        policy_wrapper.load()
 
-    visualize_environment(policy=policy_wrapper, filename=args.file)
+    visualize_environment(policy=policy_wrapper.policy, dir=dirpath)
 
 
 if __name__ == "__main__":
