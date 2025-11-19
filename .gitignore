@@ -3,11 +3,7 @@ CLAUDE.md
 *.pyc
 
 *DS_store
-*.mp4
 *.zip
-<<<<<<< HEAD
 *.html
-=======
 logs/
 wandb/
->>>>>>> 6b6118606996533447eec141c01db42cf9bd45c8
