@@ -49,7 +49,7 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, filena
                 env.render()
 
                 # Grab current frame from env.fig
-                if step % 2 * render_every_n_steps == 0:
+                if step % render_every_n_steps == 0:
                     writer.grab_frame()
 
                 step += 1

@@ -16,7 +16,9 @@ from typing import Optional
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 from gymnasium.envs.registration import register
+from scipy.spatial import cKDTree
 
 from src.controller.stanley_controller import StanleyController
 from src.util.buggy import Buggy
@@ -66,11 +68,47 @@ class BuggyCourseEnv(gym.Env):
         # --- Pre-compute curb segments for ray casting ---
         # Combine left and right curbs into a single list of segments
         # Shape: (N, 2, 2) -> N segments, each has Start(x,y) and End(x,y)
-        left_pos = self.left_curb.positions
-        right_pos = self.right_curb.positions
 
-        left_segs = np.stack([left_pos[:-1], left_pos[1:]], axis=1)
-        right_segs = np.stack([right_pos[:-1], right_pos[1:]], axis=1)
+        # Subdivide the trajectory to approximate the spline with more linear segments
+        # This reduces the error between the spline distance and segment distance
+
+        # Get total length of curbs
+        left_len = self.left_curb.distances[-1]
+        right_len = self.right_curb.distances[-1]
+
+        # Create interpolated points every 0.5 meters
+        resolution = 0.5
+
+        left_dists = np.arange(0, left_len, resolution)
+        right_dists = np.arange(0, right_len, resolution)
+
+        # Get positions for these distances
+        left_pos = np.array(
+            [self.left_curb.get_position_by_distance(d) for d in left_dists]
+        )
+        right_pos = np.array(
+            [self.right_curb.get_position_by_distance(d) for d in right_dists]
+        )
+
+        # Ensure we include the very last point
+        left_pos = np.vstack(
+            [left_pos, self.left_curb.get_position_by_distance(left_len)]
+        )
+        right_pos = np.vstack(
+            [right_pos, self.right_curb.get_position_by_distance(right_len)]
+        )
+
+        # Persist dense points for stats / verification and build KD-Trees
+        self.left_points = left_pos.astype(np.float32)
+        self.right_points = right_pos.astype(np.float32)
+        self.left_tree = cKDTree(self.left_points)
+        self.right_tree = cKDTree(self.right_points)
+
+        left_segs = np.stack([self.left_points[:-1], self.left_points[1:]], axis=1)
+        right_segs = np.stack([self.right_points[:-1], self.right_points[1:]], axis=1)
+
+        self.left_segments = left_segs
+        self.right_segments = right_segs
 
         self.curb_segments = np.concatenate([left_segs, right_segs], axis=0)
         self.ray_hit_point = None
@@ -95,13 +133,96 @@ class BuggyCourseEnv(gym.Env):
         self.ax = None
         self.step_count = 0
         self.window_closed = False
-
+        self.curb_positions = None
         self.reset()  # Sets up the buggies
+
+    def _get_min_dist_to_segments(self, point, segments):
+        """
+        Vectorized calculation of the minimum distance from a point to a set of line segments.
+        """
+        P = np.array(point)
+        A = segments[:, 0, :]
+        B = segments[:, 1, :]
+
+        AB = B - A
+        AP = P - A
+
+        # Project AP onto AB to find the closest point on the infinite line
+        # t = dot(AP, AB) / dot(AB, AB)
+        ab_sq = np.sum(AB**2, axis=1)
+        ap_dot_ab = np.sum(AP * AB, axis=1)
+
+        # Handle zero-length segments safely
+        t = np.divide(ap_dot_ab, ab_sq, out=np.zeros_like(ab_sq), where=ab_sq != 0)
+
+        # Clamp t to the segment [0, 1]
+        t = np.clip(t, 0, 1)
+
+        # Find the closest point C on the segment
+        C = A + t[:, np.newaxis] * AB
+
+        # Calculate distances from P to C
+        dists_sq = np.sum((P - C) ** 2, axis=1)
+
+        return np.sqrt(np.min(dists_sq))
 
     def _get_privileged_obs(self) -> np.ndarray:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
-        left_dist = self.left_curb.get_distance_to_path(sc_x, sc_y)
-        right_dist = self.right_curb.get_distance_to_path(sc_x, sc_y)
+
+        # --- Timing Old Approach (Spline) ---
+        t0 = time.perf_counter()
+        left_dist_spline = self.left_curb.get_distance_to_path(sc_x, sc_y)
+        right_dist_spline = self.right_curb.get_distance_to_path(sc_x, sc_y)
+        t1 = time.perf_counter()
+        spline_time = (t1 - t0) * 1000  # ms
+
+        # --- Timing KD-Tree Approach ---
+        t0 = time.perf_counter()
+        left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
+        right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
+        t1 = time.perf_counter()
+        kd_time = (t1 - t0) * 1000  # ms
+
+        # --- Timing Segment Projection (Legacy optimization draft) ---
+        t0 = time.perf_counter()
+        left_dist_seg = self._get_min_dist_to_segments((sc_x, sc_y), self.left_segments)
+        right_dist_seg = self._get_min_dist_to_segments(
+            (sc_x, sc_y), self.right_segments
+        )
+        t1 = time.perf_counter()
+        seg_time = (t1 - t0) * 1000  # ms
+
+        # --- Stats ---
+        spline_pts = len(self.left_curb.positions) + len(self.right_curb.positions)
+        kd_pts = len(self.left_points) + len(self.right_points)
+        seg_count = len(self.left_segments) + len(self.right_segments)
+
+        print("--- Distance Check Stats ---")
+        print(f"Spline : {spline_pts} pts | {spline_time:.3f} ms")
+        print(f"KDTree : {kd_pts} pts | {kd_time:.3f} ms")
+        print(f"Segments: {seg_count} segs | {seg_time:.3f} ms")
+        if kd_time > 0:
+            print(f"Spline/KD speedup: {spline_time / kd_time:.1f}x")
+
+        # --- Verification of Optimized Distance Calculation ---
+        tol = 0.02  # meters
+        if abs(left_dist_spline - left_dist_kd) > tol:
+            print(
+                f"WARNING: Left dist mismatch! spline={left_dist_spline:.4f}, kd={left_dist_kd:.4f}"
+            )
+        if abs(right_dist_spline - right_dist_kd) > tol:
+            print(
+                f"WARNING: Right dist mismatch! spline={right_dist_spline:.4f}, kd={right_dist_kd:.4f}"
+            )
+        if abs(left_dist_seg - left_dist_kd) > tol:
+            print(
+                f"WARNING: Left dist seg mismatch! seg={left_dist_seg:.4f}, kd={left_dist_kd:.4f}"
+            )
+        if abs(right_dist_seg - right_dist_kd) > tol:
+            print(
+                f"WARNING: Right dist seg mismatch! seg={right_dist_seg:.4f}, kd={right_dist_kd:.4f}"
+            )
+        # ----------------------------------------------------
 
         # Calculate distance to curb ahead
         dist_ahead, hit_point = self._get_ray_intersection(
@@ -110,10 +231,9 @@ class BuggyCourseEnv(gym.Env):
         self.ray_hit_point = hit_point
 
         # Clip distance to a reasonable sensor range (e.g., 50m)
-        print(dist_ahead)
         dist_ahead = np.clip(dist_ahead, 0, 50.0)
 
-        return np.array([left_dist - right_dist, dist_ahead], dtype=np.float32)
+        return np.array([left_dist_kd - right_dist_kd, dist_ahead], dtype=np.float32)
 
     def _get_ray_intersection(
         self, ray_origin, ray_heading
@@ -285,10 +405,36 @@ class BuggyCourseEnv(gym.Env):
 
     def _check_crash(self) -> bool:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
-        if (
-            self.left_curb.get_distance_to_path(sc_x, sc_y) < 0.1
-            or self.right_curb.get_distance_to_path(sc_x, sc_y) < 0.1
-        ):
+        left_dist_spline = self.left_curb.get_distance_to_path(sc_x, sc_y)
+        right_dist_spline = self.right_curb.get_distance_to_path(sc_x, sc_y)
+
+        left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
+        right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
+
+        left_dist_seg = self._get_min_dist_to_segments((sc_x, sc_y), self.left_segments)
+        right_dist_seg = self._get_min_dist_to_segments(
+            (sc_x, sc_y), self.right_segments
+        )
+
+        tol = 0.02
+        if abs(left_dist_spline - left_dist_kd) > tol:
+            print(
+                f"WARNING: Crash check left mismatch! spline={left_dist_spline:.4f}, kd={left_dist_kd:.4f}"
+            )
+        if abs(right_dist_spline - right_dist_kd) > tol:
+            print(
+                f"WARNING: Crash check right mismatch! spline={right_dist_spline:.4f}, kd={right_dist_kd:.4f}"
+            )
+        if abs(left_dist_seg - left_dist_kd) > tol:
+            print(
+                f"WARNING: Crash check left seg mismatch! seg={left_dist_seg:.4f}, kd={left_dist_kd:.4f}"
+            )
+        if abs(right_dist_seg - right_dist_kd) > tol:
+            print(
+                f"WARNING: Crash check right seg mismatch! seg={right_dist_seg:.4f}, kd={right_dist_kd:.4f}"
+            )
+
+        if left_dist_kd < 0.1 or right_dist_kd < 0.1:
             return True
         return False
 
@@ -352,37 +498,39 @@ class BuggyCourseEnv(gym.Env):
         )
 
         # Plot curb
-        curb_positions = np.concatenate(
-            [
-                np.array(
-                    [
-                        self.left_curb.get_position_by_distance(dist)
-                        for dist in np.linspace(
-                            0,
-                            self.left_curb.distances[-1],
-                            len(self.left_curb.distances) // 10,
-                        )
-                    ]
-                ),
-                np.full(
-                    (1, 2), np.nan
-                ),  # Splits the line segment so both curbs aren't conjoined
-                np.array(
-                    [
-                        self.right_curb.get_position_by_distance(dist)
-                        for dist in np.linspace(
-                            0,
-                            self.right_curb.distances[-1],
-                            len(self.right_curb.distances) // 10,
-                        )
-                    ]
-                ),
-            ],
-            axis=0,
-        )
+        if self.curb_positions is None:
+            self.curb_positions = np.concatenate(
+                [
+                    np.array(
+                        [
+                            self.left_curb.get_position_by_distance(dist)
+                            for dist in np.linspace(
+                                0,
+                                self.left_curb.distances[-1],
+                                len(self.left_curb.distances) // 10,
+                            )
+                        ]
+                    ),
+                    np.full(
+                        (1, 2), np.nan
+                    ),  # Splits the line segment so both curbs aren't conjoined
+                    np.array(
+                        [
+                            self.right_curb.get_position_by_distance(dist)
+                            for dist in np.linspace(
+                                0,
+                                self.right_curb.distances[-1],
+                                len(self.right_curb.distances) // 10,
+                            )
+                        ]
+                    ),
+                ],
+                axis=0,
+            )
+
         self.ax.plot(
-            curb_positions[:, 0],
-            curb_positions[:, 1],
+            self.curb_positions[:, 0],
+            self.curb_positions[:, 1],
             "k",
             linewidth=1,
             label="Curbs",

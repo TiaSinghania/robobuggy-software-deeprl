@@ -15,7 +15,7 @@ model = StanleyPolicy(
 
 def main():
 
-    visualize_environment(policy=model)
+    visualize_environment(policy=model, render_every_n_steps=200)
 
 
 if __name__ == "__main__":
