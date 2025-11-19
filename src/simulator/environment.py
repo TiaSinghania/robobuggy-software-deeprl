@@ -31,6 +31,8 @@ UTM_NORTH_ZERO = 4477321.07
 
 OBS_SIZE = 7
 
+DIST_AHEAD_MAX = 100
+
 
 class BuggyCourseEnv(gym.Env):
     def __init__(
@@ -61,46 +63,27 @@ class BuggyCourseEnv(gym.Env):
         self.steer_scale = steer_scale
         self.render_every_n_steps = render_every_n_steps
 
-        self.target_traj = Trajectory(target_path)
-        self.left_curb = Trajectory(left_curb_path)
-        self.right_curb = Trajectory(right_curb_path)
-
-        # --- Pre-compute curb segments for ray casting ---
-        # Combine left and right curbs into a single list of segments
-        # Shape: (N, 2, 2) -> N segments, each has Start(x,y) and End(x,y)
-
-        # Subdivide the trajectory to approximate the spline with more linear segments
-        # This reduces the error between the spline distance and segment distance
-
-        # Get total length of curbs
-        left_len = self.left_curb.distances[-1]
-        right_len = self.right_curb.distances[-1]
-
-        # Create interpolated points every 0.5 meters
-        resolution = 0.5
-
-        left_dists = np.arange(0, left_len + resolution, resolution)
-        right_dists = np.arange(0, right_len + resolution, resolution)
+        self.target_traj = Trajectory(target_path, create_kdtree=True, resolution=0.5)
+        self.left_curb = Trajectory(left_curb_path, create_kdtree=True, resolution=0.5)
+        self.right_curb = Trajectory(
+            right_curb_path, create_kdtree=True, resolution=0.5
+        )
 
         # Get positions for these distances
-        self.left_points = np.array(
-            [self.left_curb.get_position_by_distance(d) for d in left_dists]
-        )
-        self.right_points = np.array(
-            [self.right_curb.get_position_by_distance(d) for d in right_dists]
-        )
+        self.left_points = self.left_curb.positions
+        self.right_points = self.right_curb.positions
 
         # Persist dense points for stats / verification and build KD-Trees
-        self.left_tree = cKDTree(self.left_points)
-        self.right_tree = cKDTree(self.right_points)
+        self.left_tree = self.left_curb.tree
+        self.right_tree = self.right_curb.tree
 
-        left_segs = np.stack([self.left_points[:-1], self.left_points[1:]], axis=1)
-        right_segs = np.stack([self.right_points[:-1], self.right_points[1:]], axis=1)
+        self.left_segments = np.stack(
+            [self.left_points[:-1], self.left_points[1:]], axis=1
+        )
+        self.right_segments = np.stack(
+            [self.right_points[:-1], self.right_points[1:]], axis=1
+        )
 
-        self.left_segments = left_segs
-        self.right_segments = right_segs
-
-        self.curb_segments = np.concatenate([left_segs, right_segs], axis=0)
         self.ray_hit_point = None
         # -------------------------------------------------
 
@@ -126,99 +109,104 @@ class BuggyCourseEnv(gym.Env):
         self.curb_positions = None
         self.reset()  # Sets up the buggies
 
-    def _get_min_dist_to_segments(self, point, segments):
-        """
-        Vectorized calculation of the minimum distance from a point to a set of line segments.
-        """
-        P = np.array(point)
-        A = segments[:, 0, :]
-        B = segments[:, 1, :]
-
-        AB = B - A
-        AP = P - A
-
-        # Project AP onto AB to find the closest point on the infinite line
-        # t = dot(AP, AB) / dot(AB, AB)
-        ab_sq = np.sum(AB**2, axis=1)
-        ap_dot_ab = np.sum(AP * AB, axis=1)
-
-        # Handle zero-length segments safely
-        t = np.divide(ap_dot_ab, ab_sq, out=np.zeros_like(ab_sq), where=ab_sq != 0)
-
-        # Clamp t to the segment [0, 1]
-        t = np.clip(t, 0, 1)
-
-        # Find the closest point C on the segment
-        C = A + t[:, np.newaxis] * AB
-
-        # Calculate distances from P to C
-        dists_sq = np.sum((P - C) ** 2, axis=1)
-
-        return np.sqrt(np.min(dists_sq))
-
     def _get_privileged_obs(self) -> np.ndarray:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
 
         left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
         right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
 
-        # Calculate distance to curb ahead
-        dist_ahead, hit_point = self._get_ray_intersection(
+        dist_ahead_tree, hit_point_tree = self._get_ray_intersection_tree(
             ray_origin=(sc_x, sc_y), ray_heading=self.sc.theta
         )
-        self.ray_hit_point = hit_point
 
-        # Clip distance to a reasonable sensor range (e.g., 50m)
-        dist_ahead = np.clip(dist_ahead, 0, 50.0)
+        self.ray_hit_point = hit_point_tree
+
+        # Clip distance to a reasonable sensor range
+        dist_ahead = np.clip(dist_ahead_tree, 0, DIST_AHEAD_MAX)
 
         return np.array([left_dist_kd - right_dist_kd, dist_ahead], dtype=np.float32)
 
-    def _get_ray_intersection(
+    def _get_ray_intersection_tree(
         self, ray_origin, ray_heading
     ) -> tuple[float, Optional[np.ndarray]]:
         """
         Calculates the distance from ray_origin along ray_heading to the nearest curb segment.
-        Uses vectorized Cramer's rule for line segment intersection.
+        Uses KD-Tree for faster lookup with batched queries.
         """
         O = np.array(ray_origin)
         D = np.array([np.cos(ray_heading), np.sin(ray_heading)])
 
-        # Segments: Q = A + u(B-A)
-        A = self.curb_segments[:, 0, :]
-        B = self.curb_segments[:, 1, :]
+        # Parameters: spaced x meters apart with radius x/2
+        step_size = 2
+        radius = step_size / 2.0
+
+        # Generate query points along the ray
+        dists = np.arange(0, DIST_AHEAD_MAX, step_size)
+        query_points = O + dists[:, np.newaxis] * D
+
+        # Batch query both trees
+        # Returns object array of lists of indices
+        left_idxs_batch = self.left_tree.query_ball_point(query_points, radius)
+        right_idxs_batch = self.right_tree.query_ball_point(query_points, radius)
+
+        # Collect unique indices
+        left_idxs = set()
+        for idxs in left_idxs_batch:
+            left_idxs.update(idxs)
+
+        right_idxs = set()
+        for idxs in right_idxs_batch:
+            right_idxs.update(idxs)
+
+        candidate_segments = []
+
+        # Collect segments from left tree
+        for i in left_idxs:
+            if i < len(self.left_segments):
+                candidate_segments.append(self.left_segments[i])
+            if i > 0:
+                candidate_segments.append(self.left_segments[i - 1])
+
+        # Collect segments from right tree
+        for i in right_idxs:
+            if i < len(self.right_segments):
+                candidate_segments.append(self.right_segments[i])
+            if i > 0:
+                candidate_segments.append(self.right_segments[i - 1])
+
+        if not candidate_segments:
+            return float("inf"), None
+
+        segments = np.array(candidate_segments)
+
+        # Vectorized intersection test
+        A = segments[:, 0, :]
+        B = segments[:, 1, :]
         V = B - A
         W = O - A
 
-        # Solve system: tD - uV = -W  =>  [D, -V] * [t, u]^T = -W
-        # Determinant = D x (-V) = V x D
         det = V[:, 0] * D[1] - V[:, 1] * D[0]
-
-        # Filter parallel lines to avoid division by zero
         non_parallel = np.abs(det) > 1e-8
 
-        # t = (W x V) / det
-        WxV = W[:, 0] * V[:, 1] - W[:, 1] * V[:, 0]
-        t = np.full(len(det), np.inf)
-        t[non_parallel] = WxV[non_parallel] / det[non_parallel]
+        if np.any(non_parallel):
+            WxV = W[:, 0] * V[:, 1] - W[:, 1] * V[:, 0]
+            t = np.full(len(det), np.inf)
+            t[non_parallel] = WxV[non_parallel] / det[non_parallel]
 
-        # u = (W x D) / det
-        WxD = W[:, 0] * D[1] - W[:, 1] * D[0]
-        u = np.full(len(det), -1.0)
-        u[non_parallel] = WxD[non_parallel] / det[non_parallel]
+            WxD = W[:, 0] * D[1] - W[:, 1] * D[0]
+            u = np.full(len(det), -1.0)
+            u[non_parallel] = WxD[non_parallel] / det[non_parallel]
 
-        # Intersection criteria:
-        # 1. 0 <= u <= 1 (intersection is within the segment endpoints)
-        # 2. t > 0 (intersection is in front of the ray, not behind)
-        mask = (u >= 0) & (u <= 1) & (t > 0)
+            # Intersection criteria
+            mask = (u >= 0) & (u <= 1) & (t > 0)
+            valid_t = t[mask]
 
-        valid_t = t[mask]
+            if len(valid_t) > 0:
+                min_t = np.min(valid_t)
+                hit_point = O + min_t * D
+                return min_t, hit_point
 
-        if len(valid_t) == 0:
-            return float("inf"), None
-
-        min_t = np.min(valid_t)
-        hit_point = O + min_t * D
-        return min_t, hit_point
+        return float("inf"), None
 
     def _get_obs(self) -> np.ndarray:
         """

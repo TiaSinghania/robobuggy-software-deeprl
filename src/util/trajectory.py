@@ -5,6 +5,7 @@ import time
 import numpy as np
 import utm
 from scipy.interpolate import Akima1DInterpolator, CubicSpline
+from scipy.spatial import cKDTree
 import src.simulator.environment
 
 
@@ -24,21 +25,26 @@ class Trajectory:
     """
 
     def __init__(
-        self, json_filepath=None, positions=None, interpolator="CubicSpline"
+        self,
+        json_filepath=None,
+        positions=None,
+        interpolator="CubicSpline",
+        create_kdtree=False,
+        resolution=None,
     ) -> None:
         """
         Args:
             json_filepath (String): file path to the path json file (begins at /rb_ws)
             positions [[float, float]]: reference trajectory in world coordinates
-            current_speed (float): current speed of the buggy
-
-        Returns:
-            float (desired steering angle)
+            interpolator (String): "Akima" or "CubicSpline"
+            create_kdtree (bool): Whether to build a KDTree for fast lookups
+            resolution (float): If set, resamples the trajectory to this spacing (meters)
         """
         self.distances = np.zeros((0, 1))  # (N/dt x 1) [d, d, ...]
         self.positions = np.zeros((0, 2))  # (N x 2) [(x,y), (x,y), ...]
         self.indices = None  # (N x 1) [0, 1, 2, ...]
         self.interpolation = None  # scipy.interpolate.PPoly
+        self.tree = None
 
         # read positions from file
         if positions is None:
@@ -65,25 +71,51 @@ class Trajectory:
 
         num_indices = positions.shape[0]
 
-        if interpolator == "Akima":
+        # Handle Resolution / Resampling
+        if resolution is not None:
+            # Create a temporary trajectory to calculate length and interpolate
+            temp_traj = Trajectory(positions=positions, interpolator="Akima")
+            tot_len = temp_traj.distances[-1]
+            # Calculate new number of points based on resolution
+            num_indices = int(np.ceil(tot_len / resolution)) + 1
+
+        if interpolator == "Akima" and resolution is None:
             self.positions = positions
             self.indices = np.arange(num_indices)
             self.interpolation = Akima1DInterpolator(self.indices, self.positions)
             self.interpolation.extrapolate = True
-        elif interpolator == "CubicSpline":
-            temp_traj = Trajectory(positions=positions, interpolator="Akima")
-            tot_len = temp_traj.distances[-1]
-            interp_dists = np.linspace(0, tot_len, num_indices)
+        elif interpolator == "CubicSpline" or resolution is not None:
+            if resolution is not None:
+                # If resolution is set, we force this path to resample points
+                temp_traj = Trajectory(positions=positions, interpolator="Akima")
+                tot_len = temp_traj.distances[-1]
+                interp_dists = np.linspace(0, tot_len, num_indices)
 
-            self.indices = np.arange(num_indices)
-            self.positions = [
-                temp_traj.get_position_by_distance(interp_dist)
-                for interp_dist in interp_dists
-            ]
-            self.positions = np.array(self.positions)
+                self.indices = np.arange(num_indices)
+                self.positions = [
+                    temp_traj.get_position_by_distance(interp_dist)
+                    for interp_dist in interp_dists
+                ]
+                self.positions = np.array(self.positions)
+            else:
+                # Standard CubicSpline logic
+                temp_traj = Trajectory(positions=positions, interpolator="Akima")
+                tot_len = temp_traj.distances[-1]
+                interp_dists = np.linspace(0, tot_len, num_indices)
+
+                self.indices = np.arange(num_indices)
+                self.positions = [
+                    temp_traj.get_position_by_distance(interp_dist)
+                    for interp_dist in interp_dists
+                ]
+                self.positions = np.array(self.positions)
 
             self.interpolation = CubicSpline(self.indices, self.positions)
             self.interpolation.extrapolate = True
+
+        # Build KD-Tree if requested
+        if create_kdtree:
+            self.tree = cKDTree(self.positions)
 
         # TODO: check units
         # Calculate the distances along the trajectory
@@ -100,6 +132,7 @@ class Trajectory:
         s = np.cumsum(np.hstack([[0], ds[:-1]]))
         self.distances = s
         self.dt = dt
+        self.index_array = np.arange(len(self.distances))
 
     def get_num_points(self):
         """Gets the number of points along the trajectory
@@ -219,14 +252,29 @@ class Trajectory:
         Returns:
             int: index along the trajectory
         """
-        # Interpolate the index
-        index = np.interp(
-            distance,
-            self.distances,
-            np.linspace(0, len(self.distances), len(self.distances)),
-        )
+        # Find the index i such that distances[i] <= distance < distances[i+1]
+        # self.distances is sorted, so we can use searchsorted
+        i = np.searchsorted(self.distances, distance, side="right") - 1
 
-        return index * self.dt
+        # Handle out of bounds
+        if i < 0:
+            return 0.0
+        if i >= len(self.distances) - 1:
+            return (len(self.distances) - 1) * self.dt
+
+        # Linear interpolation
+        d0 = self.distances[i]
+        d1 = self.distances[i + 1]
+
+        # Avoid division by zero
+        if d1 == d0:
+            return i * self.dt
+
+        alpha = (distance - d0) / (d1 - d0)
+
+        # The index corresponding to d0 is i, and d1 is i+1
+        # So interpolated index is i + alpha
+        return (i + alpha) * self.dt
 
     def get_distance_from_index(self, index):
         """Gets the distance at a given index along the trajectory,
@@ -238,12 +286,17 @@ class Trajectory:
         Returns:
             float: distance along the trajectory in meters
         """
-        # Interpolate the distance
-        distance = np.interp(
-            index / self.dt, np.arange(len(self.distances)), self.distances
-        )
+        idx = index / self.dt
+        i = int(idx)
 
-        return distance
+        # Handle out of bounds
+        if i < 0:
+            return self.distances[0]
+        if i >= len(self.distances) - 1:
+            return self.distances[-1]
+
+        alpha = idx - i
+        return (1 - alpha) * self.distances[i] + alpha * self.distances[i + 1]
 
     def get_curvature_by_index(self, index):
         """Gets the curvature at a given index along the trajectory,
@@ -334,6 +387,21 @@ class Trajectory:
         # If end_index is not specified, use the length of the trajectory
         if end_index is None:
             end_index = len(self.positions)  # sketch, 0-indexing where??
+
+        # Use KD-Tree for fast initial guess ONLY if we are doing a global search
+        # We only use this if the user hasn't narrowed the search window significantly
+        # (Checking if start_index is 0 is a heuristic for "global search")
+        if (
+            self.tree is not None
+            and start_index == 0
+            and end_index >= len(self.positions)
+        ):
+            _, min_ind = self.tree.query([x, y], k=1)
+
+            # Narrow the search window to around the hit
+            # We go +/- 2 indices to be safe
+            start_index = max(0, min_ind - 2)
+            end_index = min(len(self.positions), min_ind + 3)
 
         # Floor/ceil the start/end indices
         start_index = max(0, int(np.floor(start_index)))
