@@ -79,28 +79,18 @@ class BuggyCourseEnv(gym.Env):
         # Create interpolated points every 0.5 meters
         resolution = 0.5
 
-        left_dists = np.arange(0, left_len, resolution)
-        right_dists = np.arange(0, right_len, resolution)
+        left_dists = np.arange(0, left_len + resolution, resolution)
+        right_dists = np.arange(0, right_len + resolution, resolution)
 
         # Get positions for these distances
-        left_pos = np.array(
+        self.left_points = np.array(
             [self.left_curb.get_position_by_distance(d) for d in left_dists]
         )
-        right_pos = np.array(
+        self.right_points = np.array(
             [self.right_curb.get_position_by_distance(d) for d in right_dists]
         )
 
-        # Ensure we include the very last point
-        left_pos = np.vstack(
-            [left_pos, self.left_curb.get_position_by_distance(left_len)]
-        )
-        right_pos = np.vstack(
-            [right_pos, self.right_curb.get_position_by_distance(right_len)]
-        )
-
         # Persist dense points for stats / verification and build KD-Trees
-        self.left_points = left_pos.astype(np.float32)
-        self.right_points = right_pos.astype(np.float32)
         self.left_tree = cKDTree(self.left_points)
         self.right_tree = cKDTree(self.right_points)
 
@@ -169,60 +159,8 @@ class BuggyCourseEnv(gym.Env):
     def _get_privileged_obs(self) -> np.ndarray:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
 
-        # --- Timing Old Approach (Spline) ---
-        t0 = time.perf_counter()
-        left_dist_spline = self.left_curb.get_distance_to_path(sc_x, sc_y)
-        right_dist_spline = self.right_curb.get_distance_to_path(sc_x, sc_y)
-        t1 = time.perf_counter()
-        spline_time = (t1 - t0) * 1000  # ms
-
-        # --- Timing KD-Tree Approach ---
-        t0 = time.perf_counter()
         left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
         right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
-        t1 = time.perf_counter()
-        kd_time = (t1 - t0) * 1000  # ms
-
-        # --- Timing Segment Projection (Legacy optimization draft) ---
-        t0 = time.perf_counter()
-        left_dist_seg = self._get_min_dist_to_segments((sc_x, sc_y), self.left_segments)
-        right_dist_seg = self._get_min_dist_to_segments(
-            (sc_x, sc_y), self.right_segments
-        )
-        t1 = time.perf_counter()
-        seg_time = (t1 - t0) * 1000  # ms
-
-        # --- Stats ---
-        spline_pts = len(self.left_curb.positions) + len(self.right_curb.positions)
-        kd_pts = len(self.left_points) + len(self.right_points)
-        seg_count = len(self.left_segments) + len(self.right_segments)
-
-        print("--- Distance Check Stats ---")
-        print(f"Spline : {spline_pts} pts | {spline_time:.3f} ms")
-        print(f"KDTree : {kd_pts} pts | {kd_time:.3f} ms")
-        print(f"Segments: {seg_count} segs | {seg_time:.3f} ms")
-        if kd_time > 0:
-            print(f"Spline/KD speedup: {spline_time / kd_time:.1f}x")
-
-        # --- Verification of Optimized Distance Calculation ---
-        tol = 0.02  # meters
-        if abs(left_dist_spline - left_dist_kd) > tol:
-            print(
-                f"WARNING: Left dist mismatch! spline={left_dist_spline:.4f}, kd={left_dist_kd:.4f}"
-            )
-        if abs(right_dist_spline - right_dist_kd) > tol:
-            print(
-                f"WARNING: Right dist mismatch! spline={right_dist_spline:.4f}, kd={right_dist_kd:.4f}"
-            )
-        if abs(left_dist_seg - left_dist_kd) > tol:
-            print(
-                f"WARNING: Left dist seg mismatch! seg={left_dist_seg:.4f}, kd={left_dist_kd:.4f}"
-            )
-        if abs(right_dist_seg - right_dist_kd) > tol:
-            print(
-                f"WARNING: Right dist seg mismatch! seg={right_dist_seg:.4f}, kd={right_dist_kd:.4f}"
-            )
-        # ----------------------------------------------------
 
         # Calculate distance to curb ahead
         dist_ahead, hit_point = self._get_ray_intersection(
@@ -405,34 +343,9 @@ class BuggyCourseEnv(gym.Env):
 
     def _check_crash(self) -> bool:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
-        left_dist_spline = self.left_curb.get_distance_to_path(sc_x, sc_y)
-        right_dist_spline = self.right_curb.get_distance_to_path(sc_x, sc_y)
 
         left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
         right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
-
-        left_dist_seg = self._get_min_dist_to_segments((sc_x, sc_y), self.left_segments)
-        right_dist_seg = self._get_min_dist_to_segments(
-            (sc_x, sc_y), self.right_segments
-        )
-
-        tol = 0.02
-        if abs(left_dist_spline - left_dist_kd) > tol:
-            print(
-                f"WARNING: Crash check left mismatch! spline={left_dist_spline:.4f}, kd={left_dist_kd:.4f}"
-            )
-        if abs(right_dist_spline - right_dist_kd) > tol:
-            print(
-                f"WARNING: Crash check right mismatch! spline={right_dist_spline:.4f}, kd={right_dist_kd:.4f}"
-            )
-        if abs(left_dist_seg - left_dist_kd) > tol:
-            print(
-                f"WARNING: Crash check left seg mismatch! seg={left_dist_seg:.4f}, kd={left_dist_kd:.4f}"
-            )
-        if abs(right_dist_seg - right_dist_kd) > tol:
-            print(
-                f"WARNING: Crash check right seg mismatch! seg={right_dist_seg:.4f}, kd={right_dist_kd:.4f}"
-            )
 
         if left_dist_kd < 0.1 or right_dist_kd < 0.1:
             return True
