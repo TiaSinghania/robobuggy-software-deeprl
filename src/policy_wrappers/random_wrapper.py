@@ -16,3 +16,9 @@ class Random_Wrapper(PolicyWrapper):
     def train(self, timesteps):
         print("[WARNING]: Random Policy Does Not Train")
         return
+
+    def save(self):
+        pass
+
+    def load(self):
+        pass
