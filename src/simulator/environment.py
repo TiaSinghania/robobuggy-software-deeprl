@@ -29,7 +29,7 @@ SC_WHEELBASE = 1.104
 UTM_EAST_ZERO = 589761.40
 UTM_NORTH_ZERO = 4477321.07
 
-OBS_SIZE = 7
+OBS_SIZE = 8
 
 DIST_AHEAD_MAX = 100
 
@@ -124,7 +124,7 @@ class BuggyCourseEnv(gym.Env):
         # Clip distance to a reasonable sensor range
         dist_ahead = np.clip(dist_ahead_tree, 0, DIST_AHEAD_MAX)
 
-        return np.array([left_dist_kd - right_dist_kd, dist_ahead], dtype=np.float32)
+        return np.array([left_dist_kd, right_dist_kd, dist_ahead], dtype=np.float32)
 
     def _get_ray_intersection_tree(
         self, ray_origin, ray_heading
