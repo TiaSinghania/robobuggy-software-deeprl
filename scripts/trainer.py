@@ -2,6 +2,7 @@ import os
 import gymnasium as gym
 import argparse
 import datetime
+import os
 
 from src.simulator.environment import BuggyCourseEnv
 from scripts.visualize import visualize_environment
@@ -41,11 +42,10 @@ def main():
     os.makedirs("./logs", exist_ok=True)
 
     if args.train:
-        now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        dirpath = f"./logs/{args.dirname}-{args.policy}-{args.timesteps}-{now}"
+        now = datetime.datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
+        dirpath = f"./logs/{now}-{args.dirname}-{args.policy}-{args.timesteps}"
     else:
         dirpath = f"./logs/{args.dirname}"
-
     env = gym.make("BuggyCourseEnv-v1")
     policy_wrapper = None
     match args.policy:
@@ -55,10 +55,16 @@ def main():
             policy_wrapper = PPO_Wrapper(env=env, dirpath=dirpath)
         case "expert":
             policy_wrapper = Stanley_Wrapper(
-                env=env, reference_traj="src/util/buggycourse_sc.json", dirpath=dirpath
+                env=env,
+                reference_traj="src/util/buggycourse_safe.json",
+                dirpath=dirpath,
             )
         case "dagger":
-            policy_wrapper = DAgger_Wrapper(env=env, dirpath=dirpath)
+            policy_wrapper = DAgger_Wrapper(
+                env=env,
+                dirpath=dirpath,
+                reference_traj_path="src/util/buggycourse_safe.json",
+            )
         case _:
             raise Exception("INVALID POLICY")
 

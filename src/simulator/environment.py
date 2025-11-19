@@ -39,7 +39,7 @@ class BuggyCourseEnv(gym.Env):
         self,
         rate: int = 100,
         steer_scale: float = np.pi / 9,
-        target_path: str = "src/util/buggycourse_sc.json",
+        target_path: str = "src/util/buggycourse_safe.json",
         left_curb_path: str = "src/util/left_curb.json",
         right_curb_path: str = "src/util/right_curb.json",
         render_every_n_steps: int = 5,
