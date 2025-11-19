@@ -70,7 +70,7 @@ def main():
         policy_wrapper.load()
 
     visualize_environment(
-        policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=200
+        policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=10
     )
 
 
