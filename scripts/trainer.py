@@ -3,8 +3,11 @@ import argparse
 
 from src.simulator.environment import BuggyCourseEnv
 from scripts.visualize import visualize_environment
-from scripts.policies.ppo_baseline import PPO
-from scripts.policies.random_baseline import Random
+from src.policies.ppo_baseline import PPO
+from src.policies.random_baseline import Random
+from src.policies.stanley_expert import ExpertStanley
+from src.policies.student import DAggerStanley
+
 
 
 def main(policy_name, policy_class):
@@ -37,15 +40,17 @@ def main(policy_name, policy_class):
             policy = Random(env)
         case "ppo":
             policy = PPO(env)
-        case "stanley":
-            policy = None
+        case "expert":
+            policy = ExpertStanley(env, reference_traj="src/util/buggycourse_sc.json")
+        case "dagger":
+            policy = DAggerStanley(env)
         case _:
             raise Exception("INVALID POLICY")
 
 
     if args.train:
         policy = policy_class.train()
-        policy.save(f"{policy_name}_model")
+        policy_class.save(f"{policy_name}_model")
 
     else:
         policy = policy_class.load(f"{policy_name}_model")

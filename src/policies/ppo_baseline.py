@@ -11,6 +11,7 @@ class PPO(Policy):
         self.model = PPO("MlpPolicy", self.env, verbose=1)
         self.model.learn(total_timesteps=int(1e6))
         print("Training complete.")
+        return self.model
 
     def save(self, ):
         self.model.save("ppo_buggy-course")
