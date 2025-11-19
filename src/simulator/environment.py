@@ -345,11 +345,23 @@ class BuggyCourseEnv(gym.Env):
     def _check_crash(self) -> bool:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
 
-        left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
-        right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
+        left_dist_kd, left_idx = self.left_tree.query([sc_x, sc_y], k=1)
+        right_dist_kd, right_idx = self.right_tree.query([sc_x, sc_y], k=1)
 
-        # TODO - better way to do this would be to check if the points are both in the same direction from the buggy
-        if left_dist_kd < 0.25 or right_dist_kd < 0.25:
+        left_point = self.left_points[left_idx]
+        right_point = self.right_points[right_idx]
+
+        head_x = np.cos(self.sc.theta)
+        head_y = np.sin(self.sc.theta)
+
+        v_left = (left_point[0] - sc_x, left_point[1] - sc_y)
+        v_right = (right_point[0] - sc_x, right_point[1] - sc_y)
+
+        cross_product_left = (head_x * v_left[1]) - (head_y * v_left[0])
+        cross_product_right = (head_x * v_right[1]) - (head_y * v_right[0])
+
+        # Check if the points are in the same direction from the buggy
+        if np.sign(cross_product_left) == np.sign(cross_product_right):
             return True
 
         return False
