@@ -22,8 +22,13 @@ class PPO_Wrapper(PolicyWrapper):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+<<<<<<< Updated upstream
         self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
         self.policy: PPO = PPO("MlpPolicy", self.env, verbose=1)
+=======
+        self.policy: PPO = PPO("MlpPolicy", self.env, verbose=1, device="cpu")
+        # self.policy.device = "cuda"
+>>>>>>> Stashed changes
 
     def train(self, timesteps):
         # we have something called dirpath
