@@ -15,8 +15,7 @@ from src.policy_wrappers.policy_wrapper import PolicyWrapper
 
 class DAgger_Wrapper(PolicyWrapper):
 
-    def __init__(self, **kwargs):
-        print(kwargs)
+    def __init__(self, reference_traj_path, **kwargs):
         super().__init__(**kwargs)
 
         rng = np.random.default_rng(0)
@@ -25,7 +24,7 @@ class DAgger_Wrapper(PolicyWrapper):
         expert = load_policy(
             "stanley-policy",
             venv=self.env,
-            reference_traj_path="src/util/buggycourse_sc.json",
+            reference_traj_path=reference_traj_path,
         )
         bc_trainer = bc.BC(
             observation_space=self.env.observation_space,

@@ -35,7 +35,7 @@ class BuggyCourseEnv(gym.Env):
         self,
         rate: int = 100,
         steer_scale: float = np.pi / 9,
-        target_path: str = "src/util/buggycourse_sc.json",
+        target_path: str = "src/util/buggycourse_safe.json",
         left_curb_path: str = "src/util/left_curb.json",
         right_curb_path: str = "src/util/right_curb.json",
         render_every_n_steps: int = 5,
@@ -110,7 +110,6 @@ class BuggyCourseEnv(gym.Env):
         self.ray_hit_point = hit_point
 
         # Clip distance to a reasonable sensor range (e.g., 50m)
-        print(dist_ahead)
         dist_ahead = np.clip(dist_ahead, 0, 50.0)
 
         return np.array([left_dist - right_dist, dist_ahead], dtype=np.float32)
