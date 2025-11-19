@@ -36,7 +36,6 @@ class PPO_Wrapper(PolicyWrapper):
         )
         plt.savefig(self.dirpath + "/ppo_rewards.png")
         plt.show()
-        return self.model
 
     def save(self):
         self.policy.save(f"{self.dirpath}/model")
