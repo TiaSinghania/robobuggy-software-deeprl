@@ -19,7 +19,9 @@ class StanleyPolicy(policies.BasePolicy):
             action_space=venv.action_space,
             **kwargs,
         )
-        self.trajectory = Trajectory(reference_traj_path)
+        self.trajectory = Trajectory(
+            reference_traj_path, create_kdtree=True, resolution=0.5
+        )
 
     def _predict(
         self, observation: PyTorchObs, deterministic: bool = False
