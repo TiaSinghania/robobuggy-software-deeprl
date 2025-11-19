@@ -29,7 +29,7 @@ SC_WHEELBASE = 1.104
 UTM_EAST_ZERO = 589761.40
 UTM_NORTH_ZERO = 4477321.07
 
-OBS_SIZE = 8
+OBS_SIZE = 9
 
 DIST_AHEAD_MAX = 100
 
@@ -85,6 +85,7 @@ class BuggyCourseEnv(gym.Env):
         )
 
         self.ray_hit_point = None
+        self.ray_hit_tangent = 0.0
         # -------------------------------------------------
 
         target_traj_idx = self.target_traj.get_closest_index_on_path(
@@ -115,20 +116,25 @@ class BuggyCourseEnv(gym.Env):
         left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
         right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
 
-        dist_ahead_tree, hit_point_tree = self._get_ray_intersection_tree(
-            ray_origin=(sc_x, sc_y), ray_heading=self.sc.theta
+        dist_ahead_tree, hit_point_tree, forward_theta = (
+            self._get_ray_intersection_tree(
+                ray_origin=(sc_x, sc_y), ray_heading=self.sc.theta
+            )
         )
 
         self.ray_hit_point = hit_point_tree
+        self.ray_hit_tangent = forward_theta
 
         # Clip distance to a reasonable sensor range
         dist_ahead = np.clip(dist_ahead_tree, 0, DIST_AHEAD_MAX)
 
-        return np.array([left_dist_kd, right_dist_kd, dist_ahead], dtype=np.float32)
+        return np.array(
+            [left_dist_kd, right_dist_kd, dist_ahead, forward_theta], dtype=np.float32
+        )
 
     def _get_ray_intersection_tree(
         self, ray_origin, ray_heading
-    ) -> tuple[float, Optional[np.ndarray]]:
+    ) -> tuple[float, Optional[np.ndarray], float]:
         """
         Calculates the distance from ray_origin along ray_heading to the nearest curb segment.
         Uses KD-Tree for faster lookup with batched queries.
@@ -175,7 +181,7 @@ class BuggyCourseEnv(gym.Env):
                 candidate_segments.append(self.right_segments[i - 1])
 
         if not candidate_segments:
-            return float("inf"), None
+            return float("inf"), None, 0.0
 
         segments = np.array(candidate_segments)
 
@@ -202,11 +208,18 @@ class BuggyCourseEnv(gym.Env):
             valid_t = t[mask]
 
             if len(valid_t) > 0:
-                min_t = np.min(valid_t)
+                min_idx = np.argmin(valid_t)
+                min_t = valid_t[min_idx]
                 hit_point = O + min_t * D
-                return min_t, hit_point
 
-        return float("inf"), None
+                # Get tangent of the hit segment
+                valid_V = V[mask]
+                hit_V = valid_V[min_idx]
+                hit_tangent = np.arctan2(hit_V[1], hit_V[0])
+
+                return min_t, hit_point, hit_tangent
+
+        return float("inf"), None, 0.0
 
     def _get_obs(self) -> np.ndarray:
         """
@@ -332,11 +345,25 @@ class BuggyCourseEnv(gym.Env):
     def _check_crash(self) -> bool:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
 
-        left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
-        right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
+        left_dist_kd, left_idx = self.left_tree.query([sc_x, sc_y], k=1)
+        right_dist_kd, right_idx = self.right_tree.query([sc_x, sc_y], k=1)
 
-        if left_dist_kd < 0.1 or right_dist_kd < 0.1:
+        left_point = self.left_points[left_idx]
+        right_point = self.right_points[right_idx]
+
+        head_x = np.cos(self.sc.theta)
+        head_y = np.sin(self.sc.theta)
+
+        v_left = (left_point[0] - sc_x, left_point[1] - sc_y)
+        v_right = (right_point[0] - sc_x, right_point[1] - sc_y)
+
+        cross_product_left = (head_x * v_left[1]) - (head_y * v_left[0])
+        cross_product_right = (head_x * v_right[1]) - (head_y * v_right[0])
+
+        # Check if the points are in the same direction from the buggy
+        if np.sign(cross_product_left) == np.sign(cross_product_right):
             return True
+
         return False
 
     def step(self, sc_steering_percentage):
@@ -474,6 +501,19 @@ class BuggyCourseEnv(gym.Env):
                 "rx",
                 markersize=10,
                 label="Intersection",
+            )
+            # Draw tangent arrow at intersection
+            tangent_len = 10.0
+            self.ax.arrow(
+                self.ray_hit_point[0],
+                self.ray_hit_point[1],
+                tangent_len * np.cos(self.ray_hit_tangent),
+                tangent_len * np.sin(self.ray_hit_tangent),
+                head_width=2,
+                head_length=2,
+                fc="orange",
+                ec="orange",
+                label="Curb Tangent",
             )
 
         # Plot Previous SC Spot
