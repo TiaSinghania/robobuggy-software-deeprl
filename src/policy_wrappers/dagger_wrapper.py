@@ -27,7 +27,6 @@ class DAgger_Wrapper(PolicyWrapper):
         self.env = make_vec_env(self.env.unwrapped.spec.id, rng=rng, n_envs=1)
         self.demo_path = self.dirpath + "/dagger_demos"
         self.log_path = self.dirpath + "/logs/"
-        self.logger = configure(self.log_path, ["tensorboard", "log", "csv"])
         expert = load_policy(
             "stanley-policy",
             venv=self.env,
@@ -44,18 +43,12 @@ class DAgger_Wrapper(PolicyWrapper):
             expert_policy=expert,
             bc_trainer=bc_trainer,
             rng=rng,
-            custom_logger=self.logger,
         )
         self.policy = self.dagger_trainer.policy
 
     def train(self, timesteps):
         print("Training DAgger model...")
         self.dagger_trainer.train(timesteps)
-        df = pd.read_csv(f"{self.log_path}/progress.csv")
-        print(df.columns)
-        df.plot(y="loss")
-        plt.savefig(self.dirpath + "/dagger_loss.png")
-        plt.show()
 
         print("Training complete. ")
 
