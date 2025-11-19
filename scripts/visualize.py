@@ -6,7 +6,6 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 import numpy as np
-from stable_baselines3 import PPO
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 sys.path.append("scripts")
