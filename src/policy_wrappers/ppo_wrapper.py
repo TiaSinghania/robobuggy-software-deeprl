@@ -22,13 +22,10 @@ class PPO_Wrapper(PolicyWrapper):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-<<<<<<< Updated upstream
-        self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
-        self.policy: PPO = PPO("MlpPolicy", self.env, verbose=1)
-=======
+        # Monitor breaks with vec envs
+        # self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
         self.policy: PPO = PPO("MlpPolicy", self.env, verbose=1, device="cpu")
         # self.policy.device = "cuda"
->>>>>>> Stashed changes
 
     def train(self, timesteps):
         # we have something called dirpath
@@ -36,11 +33,12 @@ class PPO_Wrapper(PolicyWrapper):
         self.policy.learn(total_timesteps=timesteps)
         print("Training complete.")
 
-        plot_results(
-            [self.dirpath + "/"], timesteps, results_plotter.X_TIMESTEPS, "PPO Buggy"
-        )
-        plt.savefig(self.dirpath + "/ppo_rewards.png")
-        plt.show()
+        # plot_results(
+        #     [self.dirpath + "/"], timesteps, results_plotter.X_TIMESTEPS, "PPO Buggy"
+        # )
+
+        # plt.savefig(self.dirpath + "/ppo_rewards.png")
+        # plt.show()
 
     def save(self):
         self.policy.save(f"{self.dirpath}/model")
