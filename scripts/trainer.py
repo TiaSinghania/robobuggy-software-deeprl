@@ -1,3 +1,4 @@
+import os
 import gymnasium as gym
 import argparse
 import datetime
@@ -35,6 +36,9 @@ def main():
         help="Directory name to save model visualization",
     )
     args = parser.parse_args()
+
+    # ensure logs directory exists
+    os.makedirs("./logs", exist_ok=True)
 
     if args.train:
         now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")

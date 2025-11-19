@@ -18,3 +18,9 @@ class Stanley_Wrapper(PolicyWrapper):
     def train(self, timesteps):
         print("[WARNING] Stanley Expert Does Not Train")
         return
+
+    def load(self):
+        pass
+
+    def save(self):
+        pass

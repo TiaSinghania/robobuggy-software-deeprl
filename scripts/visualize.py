@@ -23,6 +23,8 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""
 
     writer = FFMpegWriter(fps=int(0.1 / env.dt), metadata=metadata)
 
+    os.makedirs(dir, exist_ok=True)
+
     filename = f"{dir}/rollout.mp4"
 
     obs, _ = env.reset()
