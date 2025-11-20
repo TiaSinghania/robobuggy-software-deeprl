@@ -96,10 +96,12 @@ class BuggyCourseEnv(gym.Env):
             target_traj_idx
         )
 
+        self.obs_size = OBS_SIZE if include_pos_in_obs else OBS_SIZE - 2
+
         self.observation_space = gym.spaces.Box(
-            low=np.ones((OBS_SIZE,), dtype=np.float32) * -float("inf"),
-            high=np.ones((OBS_SIZE,), dtype=np.float32) * float("inf"),
-            shape=(OBS_SIZE,),
+            low=np.ones((self.obs_size,), dtype=np.float32) * -float("inf"),
+            high=np.ones((self.obs_size,), dtype=np.float32) * float("inf"),
+            shape=(self.obs_size,),
         )
         self.action_space = gym.spaces.Box(low=-1.0, high=1)
 
@@ -109,6 +111,7 @@ class BuggyCourseEnv(gym.Env):
         self.step_count = 0
         self.window_closed = False
         self.curb_positions = None
+        self.include_pos_in_obs = include_pos_in_obs
         self.reset()  # Sets up the buggies
 
     def _get_privileged_obs(self) -> np.ndarray:

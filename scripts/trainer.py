@@ -56,10 +56,12 @@ def main():
     env = make_vec_env(
         "BuggyCourseEnv-v1",
         n_envs=10,
-        rate=20,
-        max_episode_steps=4000,
-        include_pos_in_obs=False,
         vec_env_cls=SubprocVecEnv,
+        env_kwargs={
+            "rate": 20,
+            "max_episode_steps": 4000,
+            "include_pos_in_obs": False,
+        },
     )
 
     policy_wrapper = None

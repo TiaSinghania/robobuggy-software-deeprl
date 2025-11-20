@@ -29,7 +29,7 @@ class StanleyPolicy(policies.BasePolicy):
         assert isinstance(observation, torch.Tensor)
         assert observation.ndim == 2 and observation.shape == (
             1,
-            9,
+            7,  # TODO make this dynamic w/r/t include_pos_in_obs
         ), f"Dimensions {observation.ndim}, Shape {observation.shape}"
 
         current_speed = observation[0, 2].item()
