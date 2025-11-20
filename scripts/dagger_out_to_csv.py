@@ -1,8 +1,8 @@
 import re
 import csv
 
-INPUT_FILE = "logs/2025_11_19-14_44_18-dagger_max_episode-dagger-200000/out.txt"
-OUTPUT_FILE = "metrics.csv"
+INPUT_FILE = "data/ppo/ppo_out.txt"
+OUTPUT_FILE = "data/ppo/ppo_metrics.csv"
 
 
 def parse_block(block_text):
