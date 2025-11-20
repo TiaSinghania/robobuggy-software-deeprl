@@ -49,7 +49,19 @@ def main():
         dirpath = f"./logs/{now}-{args.dirname}-{args.policy}-{args.timesteps}"
     else:
         dirpath = f"./logs/{args.dirname}"
-    env = gym.make("BuggyCourseEnv-v1", rate=20, max_episode_steps=4000)
+    # env = gym.make(
+    #     "BuggyCourseEnv-v1", rate=20, max_episode_steps=100000, include_pos_in_obs=False
+    # )
+
+    env = make_vec_env(
+        "BuggyCourseEnv-v1",
+        n_envs=10,
+        rate=20,
+        max_episode_steps=4000,
+        include_pos_in_obs=False,
+        vec_env_cls=SubprocVecEnv,
+    )
+
     policy_wrapper = None
     match args.policy:
         case "random":

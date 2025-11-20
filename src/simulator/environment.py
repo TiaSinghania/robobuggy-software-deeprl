@@ -43,6 +43,7 @@ class BuggyCourseEnv(gym.Env):
         left_curb_path: str = "src/util/left_curb.json",
         right_curb_path: str = "src/util/right_curb.json",
         render_every_n_steps: int = 5,
+        include_pos_in_obs: bool = True,
     ):
         """
         Initialize a Buggy Course Environmnet.
@@ -235,12 +236,21 @@ class BuggyCourseEnv(gym.Env):
         PRIVILEGED:
             - distance from center
         """
-        return np.concatenate(
-            [
-                self.sc.get_full_obs(),
-                self._get_privileged_obs(),
-            ]
-        )
+
+        if self.include_pos_in_obs:
+            return np.concatenate(
+                [
+                    self.sc.get_full_obs(),
+                    self._get_privileged_obs(),
+                ]
+            )
+        else:
+            return np.concatenate(
+                [
+                    self.sc.get_no_pos_obs(),
+                    self._get_privileged_obs(),
+                ]
+            )
 
     def _get_info(self) -> dict:
         """
