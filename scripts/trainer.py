@@ -4,6 +4,9 @@ import argparse
 import datetime
 import os
 
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
+
 from src.simulator.environment import BuggyCourseEnv
 from scripts.visualize import visualize_environment
 from src.policy_wrappers.ppo_wrapper import PPO_Wrapper
@@ -76,7 +79,7 @@ def main():
         policy_wrapper.load()
 
     visualize_environment(
-        policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=10
+        policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=25
     )
 
 
