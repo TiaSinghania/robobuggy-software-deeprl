@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 import numpy as np
 from stable_baselines3.common.base_class import BaseAlgorithm
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 sys.path.append("scripts")
 
@@ -83,36 +85,74 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
     Run n_rollouts of the loaded policy and chart a heatmap of the paths.
     Overlay each path with a transparent opacity.
     """
-    # Do not render during simulation to speed it up
-    env = BuggyCourseEnv(rate=20, render_every_n_steps=0, include_pos_in_obs=False)
+    # Use a reasonable number of parallel environments (e.g., capped at 10 or n_rollouts)
+    n_envs = min(n_rollouts, 10)
+    print(
+        f"Generating heatmap with {n_rollouts} rollouts using {n_envs} parallel environments..."
+    )
 
-    paths = []
+    # Vectorize the environment
+    vec_env = make_vec_env(
+        BuggyCourseEnv,
+        n_envs=n_envs,
+        vec_env_cls=SubprocVecEnv,
+        env_kwargs={
+            "rate": 20,
+            "render_every_n_steps": 0,
+            "include_pos_in_obs": False,
+        },
+    )
 
-    print(f"Generating heatmap with {n_rollouts} rollouts...")
+    completed_paths = []
+    current_paths = [[] for _ in range(n_envs)]
 
-    for i in range(n_rollouts):
-        obs, _ = env.reset()
-        terminated = False
-        current_path = []
+    try:
+        # Initial reset
+        obs = vec_env.reset()
 
-        # Add initial position
-        current_path.append((env.sc.e_utm, env.sc.n_utm))
+        # Add initial position (0,0) for all current paths
+        # We assume the buggy always starts at (0,0) relative to the map origin used in environment.py
+        for path in current_paths:
+            # randomly sample within a 1m radius of the origin
+            path.append((0.0, 0.0))
 
-        while not terminated:
-            action, _states = policy.predict(obs)
-            obs, reward, terminated, truncated, _ = env.step(action)
+        # Run until we have enough rollouts
+        while len(completed_paths) < n_rollouts:
+            actions, _ = policy.predict(obs)
+            obs, rewards, dones, infos = vec_env.step(actions)
 
-            current_path.append((env.sc.e_utm, env.sc.n_utm))
+            for i in range(n_envs):
+                # If we already have enough paths, we can ignore the rest,
+                # but we must keep stepping the vec_env until we close it.
+                if len(completed_paths) >= n_rollouts:
+                    continue
 
-        paths.append(np.array(current_path))
-        print(f"Rollout {i+1}/{n_rollouts} complete")
+                # Collect position from info
+                if "pos" in infos[i]:
+                    current_paths[i].append(infos[i]["pos"])
+
+                if dones[i]:
+                    # Path is complete
+                    completed_paths.append(np.array(current_paths[i]))
+                    # Reset current path for this environment
+                    current_paths[i] = [(0.0, 0.0)]
+
+                    print(f"Rollout {len(completed_paths)}/{n_rollouts} complete")
+
+    finally:
+        vec_env.close()
+
+    print("All rollouts complete. Generating plot...")
+
+    # Create a dummy environment to access static map data (curbs, trajectory)
+    plot_env = BuggyCourseEnv(rate=20, render_every_n_steps=0, include_pos_in_obs=False)
 
     # Plotting
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    # Plot static elements (using env's data)
+    # Plot static elements (using plot_env's data)
     # Reference Trajectory
-    traj_positions = env.target_traj.positions
+    traj_positions = plot_env.target_traj.positions
     ax.plot(
         traj_positions[:, 0],
         traj_positions[:, 1],
@@ -123,17 +163,16 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
     )
 
     # Curbs - Generate curb positions if not already generated
-    # We can manually generate them using the same logic as render()
-    if env.curb_positions is None:
-        env.curb_positions = np.concatenate(
+    if plot_env.curb_positions is None:
+        plot_env.curb_positions = np.concatenate(
             [
                 np.array(
                     [
-                        env.left_curb.get_position_by_distance(dist)
+                        plot_env.left_curb.get_position_by_distance(dist)
                         for dist in np.linspace(
                             0,
-                            env.left_curb.distances[-1],
-                            len(env.left_curb.distances) // 10,
+                            plot_env.left_curb.distances[-1],
+                            len(plot_env.left_curb.distances) // 10,
                         )
                     ]
                 ),
@@ -142,11 +181,11 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
                 ),  # Splits the line segment so both curbs aren't conjoined
                 np.array(
                     [
-                        env.right_curb.get_position_by_distance(dist)
+                        plot_env.right_curb.get_position_by_distance(dist)
                         for dist in np.linspace(
                             0,
-                            env.right_curb.distances[-1],
-                            len(env.right_curb.distances) // 10,
+                            plot_env.right_curb.distances[-1],
+                            len(plot_env.right_curb.distances) // 10,
                         )
                     ]
                 ),
@@ -155,8 +194,8 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
         )
 
     ax.plot(
-        env.curb_positions[:, 0],
-        env.curb_positions[:, 1],
+        plot_env.curb_positions[:, 0],
+        plot_env.curb_positions[:, 1],
         "k",
         linewidth=1,
         label="Curbs",
@@ -164,15 +203,13 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
     )
 
     # Calculate alpha based on number of rollouts
-    # Heuristic: More rollouts -> Less opacity per line
-    # Try to keep accumulated opacity around some constant
     target_accumulated_alpha = 1.0
     alpha = min(max(target_accumulated_alpha / n_rollouts, 0.005), 0.5)
 
     print(f"Plotting paths with alpha={alpha:.4f}")
 
     # Plot all paths
-    for idx, path in enumerate(paths):
+    for idx, path in enumerate(completed_paths):
         # Only label the first one to avoid legend clutter
         label = "Buggy Path" if idx == 0 else "_nolegend_"
         ax.plot(path[:, 0], path[:, 1], "r-", linewidth=1, alpha=alpha, label=label)

@@ -283,7 +283,7 @@ class BuggyCourseEnv(gym.Env):
         """
         Return environment info
         """
-        return {}
+        return {"pos": (self.sc.e_utm, self.sc.n_utm)}
 
     def reset(self, seed: Optional[int] = None, **kwargs) -> tuple[np.ndarray, None]:
         """

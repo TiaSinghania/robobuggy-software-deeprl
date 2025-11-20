@@ -26,8 +26,8 @@ class PPO_Wrapper(PolicyWrapper):
         super().__init__(**kwargs)
 
         # Monitor breaks with vec envs
-        # self.env = VecMonitor(self.env, self.dirpath + "/monitor.csv")
-        self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
+        self.env = VecMonitor(self.env, self.dirpath + "/monitor.csv")
+        # self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
         self.policy: PPO = PPO("MlpPolicy", self.env, verbose=1, device="cpu")
         # self.policy.device = "cuda"
 
