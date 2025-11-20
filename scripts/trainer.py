@@ -8,7 +8,7 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from src.simulator.environment import BuggyCourseEnv
-from scripts.visualize import visualize_environment
+from scripts.visualize import visualize_environment, visualize_heatmap
 from src.policy_wrappers.ppo_wrapper import PPO_Wrapper
 from src.policy_wrappers.random_wrapper import Random_Wrapper
 from src.policy_wrappers.stanley_wrapper import Stanley_Wrapper
@@ -39,6 +39,17 @@ def main():
         default="buggy-sim",
         help="Directory name to save model visualization",
     )
+    parser.add_argument(
+        "--heatmap",
+        action="store_true",
+        help="Generate a heatmap of rollouts instead of a single video.",
+    )
+    parser.add_argument(
+        "--heatmap-paths",
+        type=int,
+        default=10,
+        help="Number of paths to generate for the heatmap.",
+    )
     args = parser.parse_args()
 
     # ensure logs directory exists
@@ -49,20 +60,21 @@ def main():
         dirpath = f"./logs/{now}-{args.dirname}-{args.policy}-{args.timesteps}"
     else:
         dirpath = f"./logs/{args.dirname}"
-    # env = gym.make(
-    #     "BuggyCourseEnv-v1", rate=20, max_episode_steps=100000, include_pos_in_obs=False
-    # )
 
-    env = make_vec_env(
-        "BuggyCourseEnv-v1",
-        n_envs=10,
-        vec_env_cls=SubprocVecEnv,
-        env_kwargs={
-            "rate": 20,
-            "max_episode_steps": 4000,
-            "include_pos_in_obs": False,
-        },
+    env = gym.make(
+        "BuggyCourseEnv-v1", rate=20, max_episode_steps=4000, include_pos_in_obs=False
     )
+
+    # env = make_vec_env(
+    #     "BuggyCourseEnv-v1",
+    #     n_envs=10,
+    #     vec_env_cls=SubprocVecEnv,
+    #     env_kwargs={
+    #         "rate": 20,
+    #         "max_episode_steps": 4000,
+    #         "include_pos_in_obs": False,
+    #     },
+    # )
 
     policy_wrapper = None
     match args.policy:
@@ -92,9 +104,14 @@ def main():
     else:
         policy_wrapper.load()
 
-    visualize_environment(
-        policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=25
-    )
+    if args.heatmap:
+        visualize_heatmap(
+            policy=policy_wrapper.policy, n_rollouts=args.heatmap_paths, dir=dirpath
+        )
+    else:
+        visualize_environment(
+            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=25
+        )
 
 
 if __name__ == "__main__":
