@@ -74,6 +74,12 @@ class BuggyCourseEnv(gym.Env):
         self.left_points = self.left_curb.positions
         self.right_points = self.right_curb.positions
 
+        # Add a segment to the end of the left curb that connects it to the end of the right curb
+        # This is a hack to define a final segment that caps the end of the track
+        # When getting the look ahead ray, we don't want to look out of bounds
+        # So this final segment can be checked, and if it's seen, it's ignored
+        self.left_points = np.concatenate([self.left_points, [self.right_points[-1]]])
+
         # Persist dense points for stats / verification and build KD-Trees
         self.left_tree = self.left_curb.tree
         self.right_tree = self.right_curb.tree
@@ -120,11 +126,22 @@ class BuggyCourseEnv(gym.Env):
         left_dist_kd, _ = self.left_tree.query([sc_x, sc_y], k=1)
         right_dist_kd, _ = self.right_tree.query([sc_x, sc_y], k=1)
 
-        dist_ahead_tree, hit_point_tree, forward_theta = (
-            self._get_ray_intersection_tree(
-                ray_origin=(sc_x, sc_y), ray_heading=self.sc.theta
-            )
+        (
+            dist_ahead_tree,
+            hit_point_tree,
+            forward_theta,
+            is_cap,
+        ) = self._get_ray_intersection_tree(
+            ray_origin=(sc_x, sc_y), ray_heading=self.sc.theta
         )
+
+        # ignore the hit point if it's on the cap segment
+        if is_cap:
+            dist_ahead_tree = float("inf")
+            hit_point_tree = None
+            forward_theta = 0.0
+
+        # check if hit_point_tree is on the final segment
 
         self.ray_hit_point = hit_point_tree
         self.ray_hit_tangent = forward_theta
@@ -185,7 +202,7 @@ class BuggyCourseEnv(gym.Env):
                 candidate_segments.append(self.right_segments[i - 1])
 
         if not candidate_segments:
-            return float("inf"), None, 0.0
+            return float("inf"), None, 0.0, False
 
         segments = np.array(candidate_segments)
 
@@ -216,14 +233,21 @@ class BuggyCourseEnv(gym.Env):
                 min_t = valid_t[min_idx]
                 hit_point = O + min_t * D
 
+                valid_segment_indices = np.where(mask)[0]
+                hit_segment_idx = valid_segment_indices[min_idx]
+                hit_segment = segments[hit_segment_idx]
+
+                # Check if this is the cap segment (last segment of left curb)
+                is_cap = np.array_equal(hit_segment, self.left_segments[-1])
+
                 # Get tangent of the hit segment
                 valid_V = V[mask]
                 hit_V = valid_V[min_idx]
                 hit_tangent = np.arctan2(hit_V[1], hit_V[0])
 
-                return min_t, hit_point, hit_tangent
+                return min_t, hit_point, hit_tangent, is_cap
 
-        return float("inf"), None, 0.0
+        return float("inf"), None, 0.0, False
 
     def _get_obs(self) -> np.ndarray:
         """
