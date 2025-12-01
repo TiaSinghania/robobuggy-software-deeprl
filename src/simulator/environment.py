@@ -19,6 +19,7 @@ import numpy as np
 import time
 from gymnasium.envs.registration import register
 from scipy.spatial import cKDTree
+from collections import deque
 
 from src.controller.stanley_controller import StanleyController
 from src.util.buggy import Buggy
@@ -32,6 +33,12 @@ UTM_NORTH_ZERO = 4477321.07
 OBS_SIZE = 9
 
 DIST_AHEAD_MAX = 100
+
+
+# Randomized Arguments
+DELAY_TIME = 100  # ms
+STEER_OFFSET = 2.5 * (np.pi / 180)  # 1 degree offset on all steering
+STEER_SLOP = 1 * (np.pi / (180))  # Variance in steering
 
 
 class BuggyCourseEnv(gym.Env):
@@ -110,6 +117,13 @@ class BuggyCourseEnv(gym.Env):
             shape=(self.obs_size,),
         )
         self.action_space = gym.spaces.Box(low=-1.0, high=1)
+
+        # ------------------------------------------------------
+
+        self.steer_queue = deque(
+            [0] * DELAY_TIME // self.dt, maxlen=DELAY_TIME // self.dt
+        )
+        self.steer_noise = lambda: np.random.normal(loc=STEER_OFFSET, scale=STEER_SLOP)
 
         # Visualization
         self.fig = None
@@ -414,7 +428,10 @@ class BuggyCourseEnv(gym.Env):
             tuple: (observation, reward, terminated, truncated, info)
         """
         assert sc_steering_percentage.shape == (1,)
-        self.sc.delta = sc_steering_percentage[0] * self.steer_scale
+
+        self.sc.delta = self.steer_queue[0] + self.steer_noise()
+        self.steer_queue.append(sc_steering_percentage[0] * self.steer_scale)
+
         self._update_buggy(self.sc, self.dt)
 
         reward = self._get_reward()
