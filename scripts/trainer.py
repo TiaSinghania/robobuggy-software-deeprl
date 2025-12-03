@@ -13,6 +13,7 @@ from src.policy_wrappers.ppo_wrapper import PPO_Wrapper
 from src.policy_wrappers.random_wrapper import Random_Wrapper
 from src.policy_wrappers.stanley_wrapper import Stanley_Wrapper
 from src.policy_wrappers.dagger_wrapper import DAgger_Wrapper
+from src.policy_wrappers.lstm_ppo_wrapper import LSTM_PPO_Wrapper
 
 
 def main():
@@ -43,6 +44,11 @@ def main():
         "--heatmap",
         action="store_true",
         help="Generate a heatmap of rollouts instead of a single video.",
+    )
+    parser.add_argument(
+        "--warm_start",
+        action="store_true",
+        help="Warm start a policy with DAgger",
     )
     parser.add_argument(
         "--heatmap-paths",
@@ -94,10 +100,21 @@ def main():
                 dirpath=dirpath,
                 reference_traj_path="src/util/buggycourse_safe.json",
             )
+        case "lstm":
+            policy_wrapper = LSTM_PPO_Wrapper(env=env, dirpath=dirpath)
         case _:
             raise Exception("INVALID POLICY")
 
     if args.train:
+        if args.warm_start:
+            dagger_wrapper = DAgger_Wrapper(
+                env=env,
+                dirpath=dirpath,
+                reference_traj_path="src/util/buggycourse_safe.json",
+                policy=policy_wrapper.policy.policy,
+            )
+            dagger_wrapper.train(int(1e5))  # CONSTANT
+
         policy_wrapper.train(args.timesteps)
         policy_wrapper.save()
 

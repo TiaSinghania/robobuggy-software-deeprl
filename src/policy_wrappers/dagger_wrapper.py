@@ -20,7 +20,7 @@ import os
 
 class DAgger_Wrapper(PolicyWrapper):
 
-    def __init__(self, reference_traj_path, **kwargs):
+    def __init__(self, reference_traj_path, policy=None, **kwargs):
         super().__init__(**kwargs)
 
         rng = np.random.default_rng(0)
@@ -42,6 +42,7 @@ class DAgger_Wrapper(PolicyWrapper):
             observation_space=self.env.observation_space,
             action_space=self.env.action_space,
             rng=rng,
+            policy=policy,
         )
         self.dagger_trainer = SimpleDAggerTrainer(
             venv=self.env,
