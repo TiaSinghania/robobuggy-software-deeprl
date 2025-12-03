@@ -173,6 +173,10 @@ class BuggyCourseEnv(gym.Env):
         for _ in range(self.rma_lookback_steps):
             self.rma_buffer.append(np.zeros((self.base_obs_size + self.action_size,)))
 
+        self._update_observation_space_for_phase()
+
+    def _update_observation_space_for_phase(self) -> None:
+        """Update observation space based on current RMA phase."""
         if self.rma_current_phase == "phase_1":
             # update obs_size and observation_space
             self.obs_size = self.base_obs_size + self.env_vector_size
@@ -191,6 +195,40 @@ class BuggyCourseEnv(gym.Env):
                 high=np.ones((self.obs_size,), dtype=np.float32) * float("inf"),
                 shape=(self.obs_size,),
             )
+
+    def set_rma_phase(self, phase: rma_phase) -> None:
+        """
+        Switch the RMA phase without recreating the environment.
+
+        This allows transitioning from Phase 1 (encoder training) to Phase 2
+        (adaptation module training) without needing to recreate SubprocVecEnv workers.
+
+        Args:
+            phase: The RMA phase to switch to ("phase_1" or "phase_2")
+
+        Raises:
+            RuntimeError: If RMA is not enabled for this environment
+        """
+        if not self.rma:
+            raise RuntimeError(
+                "Cannot set RMA phase: RMA is not enabled for this environment"
+            )
+
+        if phase not in ("phase_1", "phase_2"):
+            raise ValueError(f"Invalid phase: {phase}. Must be 'phase_1' or 'phase_2'")
+
+        self.rma_current_phase = phase
+        self.rma_config.current_phase = phase
+        self._update_observation_space_for_phase()
+
+        # Reset the buffer when switching phases
+        self.rma_buffer.clear()
+        for _ in range(self.rma_lookback_steps):
+            self.rma_buffer.append(np.zeros((self.base_obs_size + self.action_size,)))
+
+    def get_observation_space(self) -> gym.spaces.Box:
+        """Return the current observation space (for syncing with VecEnv wrappers)."""
+        return self.observation_space
 
     def _get_privileged_obs(self) -> np.ndarray:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm

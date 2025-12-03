@@ -15,12 +15,12 @@ class Stanley_Wrapper(PolicyWrapper):
             self.env, reference_traj_path=self.reference_traj
         )
 
-    def train(self, timesteps):
+    def train(self, timesteps: int, **kwargs) -> None:
         print("[WARNING] Stanley Expert Does Not Train")
         return
 
-    def load(self):
+    def load(self, **kwargs) -> None:
         pass
 
-    def save(self):
+    def save(self) -> None:
         pass

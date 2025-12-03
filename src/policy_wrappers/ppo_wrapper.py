@@ -31,7 +31,7 @@ class PPO_Wrapper(PolicyWrapper):
         self.policy: PPO = PPO("MlpPolicy", self.env, verbose=1, device="cpu")
         # self.policy.device = "cuda"
 
-    def train(self, timesteps):
+    def train(self, timesteps: int, **kwargs) -> None:
         # we have something called dirpath
         print("Training PPO model...")
         self.policy.learn(total_timesteps=timesteps)
@@ -44,10 +44,10 @@ class PPO_Wrapper(PolicyWrapper):
         plt.savefig(self.dirpath + "/ppo_rewards.png")
         plt.show()
 
-    def save(self):
+    def save(self) -> None:
         self.policy.save(f"{self.dirpath}/model")
         print("Model saved to ppo_buggy-course.")
 
-    def load(self):
+    def load(self, **kwargs) -> None:
         print("Loading existing PPO model...")
         self.policy = PPO.load(f"{self.dirpath}/model")

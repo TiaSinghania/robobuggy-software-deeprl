@@ -52,19 +52,17 @@ class DAgger_Wrapper(PolicyWrapper):
         )
         self.policy = self.dagger_trainer.policy
 
-    def train(self, timesteps):
+    def train(self, timesteps: int, **kwargs) -> None:
         print("Training DAgger model...")
         self.dagger_trainer.train(timesteps)
 
         print("Training complete. ")
 
-    def save(
-        self,
-    ):
+    def save(self) -> None:
         self.dagger_trainer.save_trainer()
         print("Model saved to dagger-buggy-course")
 
-    def load(self):
+    def load(self, **kwargs) -> None:
         print("Loading existing DAgger model...")
 
         self.dagger_trainer = reconstruct_trainer(

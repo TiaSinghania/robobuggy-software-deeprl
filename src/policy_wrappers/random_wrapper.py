@@ -13,12 +13,12 @@ class Random_Wrapper(PolicyWrapper):
 
         self.policy = RandomPolicy()
 
-    def train(self, timesteps):
+    def train(self, timesteps: int, **kwargs) -> None:
         print("[WARNING]: Random Policy Does Not Train")
         return
 
-    def save(self):
+    def save(self) -> None:
         pass
 
-    def load(self):
+    def load(self, **kwargs) -> None:
         pass
