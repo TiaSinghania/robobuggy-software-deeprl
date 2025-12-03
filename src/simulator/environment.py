@@ -40,9 +40,9 @@ DIST_AHEAD_MAX = 100
 
 
 # Randomized Arguments
-DELAY_TIME = 100  # ms
-STEER_OFFSET = 2.5 * (np.pi / 180)  # 1 degree offset on all steering
-STEER_SLOP = 1 * (np.pi / (180))  # Variance in steering
+DELAY_TIME = 0.05  # s
+STEER_OFFSET = 2 * (np.pi / 180)  # Steering offset (rad)
+STEER_SLOP = 0.5 * (np.pi / (180))  # Variance in steering (rad)
 
 
 type rma_phase = Literal["phase_1", "phase_2"]
@@ -140,7 +140,7 @@ class BuggyCourseEnv(gym.Env):
         # ------------------------------------------------------
 
         self.steer_queue = deque(
-            [0] * DELAY_TIME // self.dt, maxlen=DELAY_TIME // self.dt
+            [0] * int(DELAY_TIME // self.dt), maxlen=int(DELAY_TIME // self.dt)
         )
         self.steer_noise = lambda: np.random.normal(loc=STEER_OFFSET, scale=STEER_SLOP)
 

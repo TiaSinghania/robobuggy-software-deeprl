@@ -80,7 +80,8 @@ def main():
             vec_env_cls=SubprocVecEnv,
             env_kwargs={
                 "rate": 20,
-                "include_pos_in_obs": False,
+                "max_episode_steps": 4000,
+                "include_pos_in_obs": True,
             },
         )
 
