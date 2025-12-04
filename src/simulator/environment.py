@@ -41,9 +41,9 @@ DIST_AHEAD_MAX = 100
 DELAY_TIME = 100  # ms
 STEER_OFFSET = 2.5 * (np.pi / 180)  # 1 degree offset on all steering
 STEER_SLOP = 1 * (np.pi / (180))  # Variance in steering
-CORNERING_STIFFNESS = 
-MU_FRICTION = 
-COURSE_SLOPE = 
+CORNERING_STIFFNESS = 2500 # N/rad
+MU_FRICTION = 0.7
+COURSE_SLOPE = 5 * (np.pi / 180) # 5 degree constant slope assumed
 
 class BuggyCourseEnv(gym.Env):
     def __init__(
@@ -123,9 +123,9 @@ class BuggyCourseEnv(gym.Env):
         self.action_space = gym.spaces.Box(low=-1.0, high=1)
 
         # ------------------------------------------------------
-
+        maxlen = int(DELAY_TIME // self.dt)
         self.steer_queue = deque(
-            [0] * DELAY_TIME // self.dt, maxlen=DELAY_TIME // self.dt
+            [0] * maxlen, maxlen=maxlen
         )
         self.steer_noise = lambda: np.random.normal(loc=STEER_OFFSET, scale=STEER_SLOP)
 
@@ -563,7 +563,7 @@ class BuggyCourseEnv(gym.Env):
             self.sc.n_utm,
             "bo",
             markersize=6,
-            label=f"SC Buggy (Policy) - Speed: {self.sc.speed:.1f} m/s - Steering {np.rad2deg(self.sc.delta):.1f}°",
+            label=f"SC Buggy (Policy) - Speed: {self.sc.x_speed:.1f} m/s - Steering {np.rad2deg(self.sc.delta):.1f}°",
         )
         # Draw heading arrow for SC
         arrow_length = 8

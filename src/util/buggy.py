@@ -36,13 +36,14 @@ class Buggy:
     omega: float # rad/s
 
     # Buggy Constants
+    cornering_stiffness: float
+    mu_friction: float  
+
     wheelbase_f: float = 1.104 / 2 # m
     wheelbase_r: float = 1.104 / 2# m
     angle_clip: float = np.pi / 9  # rad
     mass: float = 41 # kg
     inertia: float = 4.05 # kg * m^2
-    cornering_stiffness: float # this should be randomized: depends on surface conditions, tire wear, too hard to know exactly basically.
-    mu_friction: float # this should be randomized too 
 
     # Buggy Control
     delta: float = 0  # rad

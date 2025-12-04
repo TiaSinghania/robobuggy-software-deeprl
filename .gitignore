@@ -7,3 +7,4 @@ CLAUDE.md
 *.html
 logs/
 wandb/
+.env
