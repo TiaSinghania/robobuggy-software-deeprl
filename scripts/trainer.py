@@ -106,15 +106,6 @@ def main():
             raise Exception("INVALID POLICY")
 
     if args.train:
-        if args.warm_start:
-            dagger_wrapper = DAgger_Wrapper(
-                env=env,
-                dirpath=dirpath,
-                reference_traj_path="src/util/buggycourse_safe.json",
-                policy=policy_wrapper.policy.policy,
-            )
-            dagger_wrapper.train(int(1e5))  # CONSTANT
-
         policy_wrapper.train(args.timesteps)
         policy_wrapper.save()
 

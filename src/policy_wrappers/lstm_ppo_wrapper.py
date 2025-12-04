@@ -13,7 +13,6 @@ import argparse
 import matplotlib.pyplot as plt
 
 from src.simulator.environment import BuggyCourseEnv
-from stable_baselines3 import PPO
 from src.policy_wrappers.policy_wrapper import PolicyWrapper
 
 from stable_baselines3.common.monitor import Monitor
@@ -30,18 +29,18 @@ class LSTM_PPO_Wrapper(PolicyWrapper):
         self.env = VecMonitor(self.env, self.dirpath + "/monitor.csv")
         # self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
         self.policy: RecurrentPPO = RecurrentPPO(
-            "MlpPolicy", self.env, verbose=1, device="cpu"
+            "MlpLstmPolicy", self.env, verbose=1, device="cpu"
         )
         # self.policy.device = "cuda"
 
     def train(self, timesteps):
         # we have something called dirpath
-        print("Training PPO model...")
+        print("Training Reurrent PPO model...")
         self.policy.learn(total_timesteps=timesteps)
         print("Training complete.")
 
         plot_results(
-            [self.dirpath + "/"], timesteps, results_plotter.X_TIMESTEPS, "PPO Buggy"
+            [self.dirpath + "/"], timesteps, results_plotter.X_TIMESTEPS, "Recurrent PPO Buggy"
         )
 
         plt.savefig(self.dirpath + "/ppo_rewards.png")
@@ -52,5 +51,5 @@ class LSTM_PPO_Wrapper(PolicyWrapper):
         print("Model saved to ppo_buggy-course.")
 
     def load(self):
-        print("Loading existing PPO model...")
-        self.policy = PPO.load(f"{self.dirpath}/model")
+        print("Loading existing Recurring PPO model...")
+        self.policy = RecurrentPPO.load(f"{self.dirpath}/model")
