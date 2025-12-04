@@ -17,6 +17,7 @@ import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import random
 from gymnasium.envs.registration import register
 from scipy.spatial import cKDTree
 from collections import deque
@@ -25,12 +26,13 @@ from src.controller.stanley_controller import StanleyController
 from src.util.buggy import Buggy
 from src.util.trajectory import Trajectory
 
-SC_WHEELBASE = 1.104
+
+
 
 UTM_EAST_ZERO = 589761.40
 UTM_NORTH_ZERO = 4477321.07
 
-OBS_SIZE = 9
+OBS_SIZE = 11
 
 DIST_AHEAD_MAX = 100
 
@@ -39,7 +41,9 @@ DIST_AHEAD_MAX = 100
 DELAY_TIME = 100  # ms
 STEER_OFFSET = 2.5 * (np.pi / 180)  # 1 degree offset on all steering
 STEER_SLOP = 1 * (np.pi / (180))  # Variance in steering
-
+CORNERING_STIFFNESS = 
+MU_FRICTION = 
+COURSE_SLOPE = 
 
 class BuggyCourseEnv(gym.Env):
     def __init__(
@@ -270,9 +274,12 @@ class BuggyCourseEnv(gym.Env):
         SC:
             - easting
             - northing
-            - speed
+            - x speed
+            - y speed
             - theta
+            - omega
             - delta
+
 
         PRIVILEGED:
             - distance from center
@@ -310,9 +317,12 @@ class BuggyCourseEnv(gym.Env):
         self.sc = Buggy(
             e_utm=self.sc_init_state[0],
             n_utm=self.sc_init_state[1],
-            speed=12,
+            x_speed=12,
+            y_speed=0,
             theta=self.sc_init_state[2],
-            wheelbase=SC_WHEELBASE,
+            omega=0,
+            cornering_stiffness=CORNERING_STIFFNESS,
+            mu_friction=MU_FRICTION,
         )
 
         self.terminated = False
@@ -331,21 +341,49 @@ class BuggyCourseEnv(gym.Env):
         control - Buggy Control
         constants - Buggy Constants
         """
-        assert state.shape == (4,)
+        assert state.shape == (6,)
         assert control.shape == (1,)
-        assert constants.shape == (2,)
+        assert constants.shape == (7,)
 
-        speed = state[2]
-        theta = state[3]
+        x_speed = state[2]
+        y_speed = state[3]
+        theta = state[4]
+        omega = state[5]
         delta = control[0]
-        wheelbase = constants[0]
 
+        wheelbase_f = constants[0]
+        wheelbase_r = constants[1]
+        angle_clip = constants[2]
+        mass = constants[3]
+        inertia = constants[4]
+        cornering_stiffness = constants[5]
+        mu_friction = constants[6]
+
+        # much of the calculations for the intermediate values taken from here: https://www.cs.cmu.edu/afs/cs/Web/People/motionplanning/reading/PlanningforDynamicVeh-1.pdf
+        # acceleration
+        
+        a_downhill = 9.8 * np.sin(COURSE_SLOPE) # m/s
+        # NOTE: this assumes the buggy always points exactly downhill (this isn't true but i don't want to think about course angles)
+        angle_downhill_x = 0
+        a_x = a_downhill * np.cos(angle_downhill_x)
+        # slip angles
+        alpha_f = (y_speed + wheelbase_f * omega)/x_speed - delta
+        alpha_r = (y_speed - wheelbase_r * omega)/x_speed
+        # longitudinal tire force
+        F_cf = -cornering_stiffness * alpha_f
+        F_cr = -cornering_stiffness * alpha_r
+
+        # derivatives of easting, northing, x_speed, y_speed, theta, omega
+        # taken from this paper: https://nuhuo08.github.io/control/IV_KinematicMPC_jason.pdf 
         return np.array(
             [
-                speed * np.cos(theta),
-                speed * np.sin(theta),
-                0.0,
-                speed / wheelbase * np.tan(delta),
+                x_speed * np.cos(theta) - y_speed * np.sin(theta),
+                x_speed * np.sin(theta) + y_speed * np.cos(theta),
+                omega * y_speed + a_x,
+                -omega * x_speed + 2/mass * (F_cf * np.cos(delta) + F_cr),
+                omega,
+                # one paper says the cos(delta) shouldn't be in here, unsure?
+                2/inertia * (wheelbase_f * F_cf * np.cos(delta)- wheelbase_r * F_cr),
             ],
             dtype=np.float32,
         )

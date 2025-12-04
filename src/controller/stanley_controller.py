@@ -35,12 +35,12 @@ class StanleyController:
         if self.current_traj_index >= self.trajectory.get_num_points() - 1:
             return 0, True
 
-        current_speed = self.buggy.speed
+        current_speed = self.buggy.x_speed
         heading = self.buggy.theta
         x, y = self.buggy.e_utm, self.buggy.n_utm  # (Easting, Northing)
 
-        front_x = x + self.buggy.wheelbase * np.cos(heading)
-        front_y = y + self.buggy.wheelbase * np.sin(heading)
+        front_x = x + self.buggy.wheelbase_f * np.cos(heading)
+        front_y = y + self.buggy.wheelbase_f * np.sin(heading)
 
         # setting range of indices to search so we don't have to search the entire path
         traj_index = self.trajectory.get_closest_index_on_path(
@@ -71,7 +71,7 @@ class StanleyController:
         y1 = closest_position[1]
         x2 = next_position[0]
         y2 = next_position[1]
-        error_dist = -((x - x1) * (y2 - y1) - (y - y1) * (x2 - x1)) / np.sqrt(
+        error_dist = -((front_x - x1) * (y2 - y1) - (front_y - y1) * (x2 - x1)) / np.sqrt(
             (y2 - y1) ** 2 + (x2 - x1) ** 2
         )
 
@@ -80,8 +80,10 @@ class StanleyController:
             current_speed + StanleyController.K_SOFT,
         )
 
+        yaw_damping_term = self.K_D_YAW * self.buggy.omega
+
         # Determine steering_command
-        steering_cmd = error_heading + cross_track_component
-        steering_cmd = np.clip(steering_cmd, -np.pi / 9, np.pi / 9)
+        steering_cmd = error_heading + cross_track_component - yaw_damping_term
+        steering_cmd = np.clip(steering_cmd, -self.buggy.angle_clip, self.buggy.angle_clip)
 
         return steering_cmd, False
