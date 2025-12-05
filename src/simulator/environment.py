@@ -451,7 +451,7 @@ class BuggyCourseEnv(gym.Env):
         """Handle window close event."""
         self.window_closed = True
 
-    def render(self):
+    def render(self, tot_reward=float("nan")):
         """Render the environment for human viewing with step counter.
 
         Only actually renders every N steps to speed up visualization without
@@ -591,7 +591,7 @@ class BuggyCourseEnv(gym.Env):
         self.ax.text(
             0.02,
             0.98,
-            f"Step: {self.step_count}\nTime: {time_elapsed:.2f}s\nRate: {1 / self.dt:.0f} Hz",
+            f"Step: {self.step_count}\nTime: {time_elapsed:.2f}s\nRate: {1 / self.dt:.0f} Hz \n Total Reward: {tot_reward:.2f}",
             transform=self.ax.transAxes,
             fontsize=14,
             fontweight="bold",

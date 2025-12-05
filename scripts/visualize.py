@@ -42,14 +42,19 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""
         with writer.saving(env.fig, filename, dpi=150):
             hidden_state = None
             episode_start = np.ones((1,), dtype=bool)
+            tot_reward = 0
             while not terminated:
                 # Random action for demonstration (replace with policy later)
-                action, hidden_state = policy.predict(obs, state=hidden_state, episode_start=episode_start)
+                action, hidden_state = policy.predict(
+                    obs, state=hidden_state, episode_start=episode_start
+                )
                 obs, reward, terminated, truncated, _ = env.step(action)
                 episode_start = terminated
 
+                tot_reward += reward
+
                 # Render the environment with step counter
-                env.render()
+                env.render(tot_reward)
 
                 # Grab current frame from env.fig
                 if step % render_every_n_steps == 0:
