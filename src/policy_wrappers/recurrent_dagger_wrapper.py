@@ -280,8 +280,7 @@ class TrainDagger:
             mean_rewards.append(torch.mean(rewards))
             median_rewards.append(torch.median(rewards))
             max_rewards.append(torch.max(rewards))
-            pbar.set_postfix(
-                {
+            out = {
                     "Mean Reward": mean_rewards[-1],
                     "Max Reward": max_rewards[-1],
                     "Loss": {
@@ -292,7 +291,8 @@ class TrainDagger:
                         ].mean()
                     },
                 }
-            )
+            print(out)
+            pbar.set_postfix(          )
 
             self.policy.train()
 
