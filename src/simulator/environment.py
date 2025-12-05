@@ -45,6 +45,7 @@ CORNERING_STIFFNESS = 2500 # N/rad
 MU_FRICTION = 0.7
 COURSE_SLOPE = 5 * (np.pi / 180) # 5 degree constant slope assumed
 
+
 class BuggyCourseEnv(gym.Env):
     def __init__(
         self,
