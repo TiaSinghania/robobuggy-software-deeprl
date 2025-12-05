@@ -103,9 +103,10 @@ def main():
             )
         case "lstm":
             policy_wrapper = LSTM_PPO_Wrapper(env=env, dirpath=dirpath)
+        case "recurrent":
             policy_wrapper = RecurrentDaggerWrapper(
                 reference_traj_path="src/util/buggycourse_safe.json",
-                policy=policy_wrapper.policy.policy,
+                policy=LSTM_PPO_Wrapper(env=env, dirpath=dirpath).policy.policy,
                 env=env,
                 dirpath=dirpath,
             )
@@ -113,6 +114,15 @@ def main():
             raise Exception("INVALID POLICY")
 
     if args.train:
+        if args.warm_start:
+            warm_wrapper = RecurrentDaggerWrapper(
+                reference_traj_path="src/util/buggycourse_safe.json",
+                policy=policy_wrapper.policy.policy,
+                env=env,
+                dirpath=dirpath,
+            )
+            warm_wrapper.train(3000)
+            warm_wrapper.save()
         policy_wrapper.train(args.timesteps)
         policy_wrapper.save()
 
@@ -125,7 +135,7 @@ def main():
         )
     else:
         visualize_environment(
-            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=25
+            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=1
         )
 
 
