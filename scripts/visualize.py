@@ -19,11 +19,11 @@ from src.simulator.environment import BuggyCourseEnv
 def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""):
     """Run the buggy environment with visualization using env.render()."""
     env = BuggyCourseEnv(
-        rate=20, render_every_n_steps=render_every_n_steps, include_pos_in_obs=False
+        rate=20, render_every_n_steps=render_every_n_steps, include_pos_in_obs=True
     )
     env.render()
 
-    metadata = dict(title="Buggy Simulation", artist="Mehul Goel")
+    metadata = dict(title="Buggy Simulation", artist="tia")
 
     writer = FFMpegWriter(fps=int(0.1 / env.dt), metadata=metadata)
 
@@ -99,7 +99,7 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
         env_kwargs={
             "rate": 20,
             "render_every_n_steps": 0,
-            "include_pos_in_obs": False,
+            "include_pos_in_obs": True,
         },
     )
 
@@ -145,7 +145,7 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
     print("All rollouts complete. Generating plot...")
 
     # Create a dummy environment to access static map data (curbs, trajectory)
-    plot_env = BuggyCourseEnv(rate=20, render_every_n_steps=0, include_pos_in_obs=False)
+    plot_env = BuggyCourseEnv(rate=20, render_every_n_steps=0, include_pos_in_obs=True)
 
     # Plotting
     fig, ax = plt.subplots(figsize=(12, 8))

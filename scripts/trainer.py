@@ -72,7 +72,7 @@ def main():
         env_kwargs={
             "rate": 20,
             "max_episode_steps": 4000,
-            "include_pos_in_obs": False,
+            "include_pos_in_obs": True,
         },
     )
 

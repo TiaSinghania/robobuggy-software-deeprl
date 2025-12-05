@@ -38,9 +38,9 @@ DIST_AHEAD_MAX = 100
 
 
 # Randomized Arguments
-DELAY_TIME = 100  # ms
-STEER_OFFSET = 2.5 * (np.pi / 180)  # 1 degree offset on all steering
-STEER_SLOP = 1 * (np.pi / (180))  # Variance in steering
+DELAY_TIME = 0.05  # s
+STEER_OFFSET = 2 * (np.pi / 180)  # Steering offset (rad)
+STEER_SLOP = 0.5 * (np.pi / (180))  # Variance in steering
 CORNERING_STIFFNESS = 2500 # N/rad
 MU_FRICTION = 0.7
 COURSE_SLOPE = 5 * (np.pi / 180) # 5 degree constant slope assumed
@@ -361,14 +361,13 @@ class BuggyCourseEnv(gym.Env):
 
         # much of the calculations for the intermediate values taken from here: https://www.cs.cmu.edu/afs/cs/Web/People/motionplanning/reading/PlanningforDynamicVeh-1.pdf
         # acceleration
-        
         a_downhill = 9.8 * np.sin(COURSE_SLOPE) # m/s
         # NOTE: this assumes the buggy always points exactly downhill (this isn't true but i don't want to think about course angles)
         angle_downhill_x = 0
         a_x = a_downhill * np.cos(angle_downhill_x)
         # slip angles
-        alpha_f = (y_speed + wheelbase_f * omega)/x_speed - delta
-        alpha_r = (y_speed - wheelbase_r * omega)/x_speed
+        alpha_f = np.arctan(y_speed + wheelbase_f * omega)/x_speed - delta
+        alpha_r = np.arctan(y_speed - wheelbase_r * omega)/x_speed
         # longitudinal tire force
         F_cf = -cornering_stiffness * alpha_f
         F_cr = -cornering_stiffness * alpha_r
