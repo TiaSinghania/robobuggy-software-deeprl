@@ -13,6 +13,8 @@ from src.policy_wrappers.ppo_wrapper import PPO_Wrapper
 from src.policy_wrappers.random_wrapper import Random_Wrapper
 from src.policy_wrappers.stanley_wrapper import Stanley_Wrapper
 from src.policy_wrappers.dagger_wrapper import DAgger_Wrapper
+from src.policy_wrappers.lstm_ppo_wrapper import LSTM_PPO_Wrapper
+from src.policy_wrappers.recurrent_dagger_wrapper import RecurrentDaggerWrapper
 
 
 def main():
@@ -45,6 +47,11 @@ def main():
         help="Generate a heatmap of rollouts instead of a single video.",
     )
     parser.add_argument(
+        "--warm_start",
+        action="store_true",
+        help="Warm start a policy with DAgger",
+    )
+    parser.add_argument(
         "--heatmap-paths",
         type=int,
         default=10,
@@ -61,20 +68,20 @@ def main():
     else:
         dirpath = f"./logs/{args.dirname}"
 
-    # env = gym.make(
-    #     "BuggyCourseEnv-v1", rate=20, max_episode_steps=4000, include_pos_in_obs=False
-    # )
-
-    env = make_vec_env(
-        "BuggyCourseEnv-v1",
-        n_envs=10,
-        vec_env_cls=SubprocVecEnv,
-        env_kwargs={
-            "rate": 20,
-            "max_episode_steps": 4000,
-            "include_pos_in_obs": True,
-        },
+    env = gym.make(
+        "BuggyCourseEnv-v1", rate=20, max_episode_steps=4000, include_pos_in_obs=True
     )
+
+    # env = make_vec_env(
+    #     "BuggyCourseEnv-v1",
+    #     n_envs=10,
+    #     vec_env_cls=SubprocVecEnv,
+    #     env_kwargs={
+    #         "rate": 20,
+    #         "max_episode_steps": 4000,
+    #         "include_pos_in_obs": True,
+    #     },
+    # )
 
     policy_wrapper = None
     match args.policy:
@@ -94,10 +101,28 @@ def main():
                 dirpath=dirpath,
                 reference_traj_path="src/util/buggycourse_safe.json",
             )
+        case "lstm":
+            policy_wrapper = LSTM_PPO_Wrapper(env=env, dirpath=dirpath)
+        case "recurrent":
+            policy_wrapper = RecurrentDaggerWrapper(
+                reference_traj_path="src/util/buggycourse_safe.json",
+                policy=LSTM_PPO_Wrapper(env=env, dirpath=dirpath).policy.policy,
+                env=env,
+                dirpath=dirpath,
+            )
         case _:
             raise Exception("INVALID POLICY")
 
     if args.train:
+        if args.warm_start:
+            warm_wrapper = RecurrentDaggerWrapper(
+                reference_traj_path="src/util/buggycourse_safe.json",
+                policy=policy_wrapper.policy.policy,
+                env=env,
+                dirpath=dirpath,
+            )
+            warm_wrapper.train(10000)
+            warm_wrapper.save()
         policy_wrapper.train(args.timesteps)
         policy_wrapper.save()
 
@@ -110,7 +135,7 @@ def main():
         )
     else:
         visualize_environment(
-            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=25
+            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=1
         )
 
 

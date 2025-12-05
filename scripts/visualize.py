@@ -16,7 +16,9 @@ sys.path.append("scripts")
 from src.simulator.environment import BuggyCourseEnv
 
 
-def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""):
+def visualize_environment(
+    policy: BaseAlgorithm, render_every_n_steps=10, dir="", record_video=True
+):
     """Run the buggy environment with visualization using env.render()."""
     env = BuggyCourseEnv(
         rate=20, render_every_n_steps=render_every_n_steps, include_pos_in_obs=True
@@ -25,10 +27,11 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""
 
     metadata = dict(title="Buggy Simulation", artist="Mehul Goel")
 
-    writer = FFMpegWriter(fps=int(0.1 / env.dt), metadata=metadata)
+    writer = FFMpegWriter(
+        fps=int(1 / (render_every_n_steps * env.dt)), metadata=metadata
+    )
 
     os.makedirs(dir, exist_ok=True)
-
     filename = f"{dir}/rollout.mp4"
 
     obs, _ = env.reset()
@@ -40,13 +43,21 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""
     try:
         step = 0
         with writer.saving(env.fig, filename, dpi=150):
+            hidden_state = None
+            episode_start = np.ones((1,), dtype=bool)
+            tot_reward = 0
             while not terminated:
                 # Random action for demonstration (replace with policy later)
-                action, _states = policy.predict(obs)
+                action, hidden_state = policy.predict(
+                    obs, state=hidden_state, episode_start=episode_start
+                )
                 obs, reward, terminated, truncated, _ = env.step(action)
+                episode_start = terminated
+
+                tot_reward += reward
 
                 # Render the environment with step counter
-                env.render()
+                env.render(tot_reward)
 
                 # Grab current frame from env.fig
                 if step % render_every_n_steps == 0:

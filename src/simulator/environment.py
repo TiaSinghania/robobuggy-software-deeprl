@@ -378,7 +378,7 @@ class BuggyCourseEnv(gym.Env):
         traj_dist = self.target_traj.get_distance_from_index(traj_idx)
 
         if traj_dist > self.target_traj_dist:
-            reward = 1e5 if not self.terminated else 0
+            reward = 100 if not self.terminated else 0
             self.terminated = True  # Crossed the finish line
         elif traj_dist > (self.prev_dist + 1):
             # Give a reward for every meter you move forward
@@ -386,7 +386,7 @@ class BuggyCourseEnv(gym.Env):
             self.prev_dist = traj_dist
         elif traj_dist < (self.prev_dist - 1):
             # Signifcantly went backwards
-            reward = -1
+            reward = -5
         else:
             # Not going anywhere
             reward = -0.1
@@ -438,7 +438,7 @@ class BuggyCourseEnv(gym.Env):
 
         if self._check_crash():
             self.terminated = True
-            reward -= 1e3  # Crash Penalty
+            reward -= 300  # Crash Penalty
 
         self.step_count += 1
 
@@ -451,7 +451,7 @@ class BuggyCourseEnv(gym.Env):
         """Handle window close event."""
         self.window_closed = True
 
-    def render(self):
+    def render(self, tot_reward=float("nan")):
         """Render the environment for human viewing with step counter.
 
         Only actually renders every N steps to speed up visualization without
@@ -591,7 +591,7 @@ class BuggyCourseEnv(gym.Env):
         self.ax.text(
             0.02,
             0.98,
-            f"Step: {self.step_count}\nTime: {time_elapsed:.2f}s\nRate: {1 / self.dt:.0f} Hz",
+            f"Step: {self.step_count}\nTime: {time_elapsed:.2f}s\nRate: {1 / self.dt:.0f} Hz \n Total Reward: {tot_reward:.2f}",
             transform=self.ax.transAxes,
             fontsize=14,
             fontweight="bold",
