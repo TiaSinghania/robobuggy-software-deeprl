@@ -110,7 +110,7 @@ def main():
         )
     else:
         visualize_environment(
-            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=25
+            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=1
         )
 
 
