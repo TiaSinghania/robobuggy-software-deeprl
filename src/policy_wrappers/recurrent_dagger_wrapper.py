@@ -15,6 +15,9 @@ from src.policies.stanley_policy import StanleyPolicy
 from sb3_contrib.common.recurrent.policies import RecurrentActorCriticPolicy
 from typing import Optional
 
+
+from sb3_contrib.common.recurrent.type_aliases import RNNStates
+
 try:
     import wandb
 except ImportError:
@@ -51,7 +54,7 @@ class TrainDagger:
         self.expert_policy = self.expert_policy.to(self.device)
 
         self.states = None
-        self.policy_states = None
+        self.policy_states: Optional[RNNStates] = None
         self.actions = None
         self.episode_starts = None
         self.timesteps = None
@@ -80,7 +83,7 @@ class TrainDagger:
             [],
             [],
             [],
-            [],
+            ([], []),
             [],
         )
 
@@ -94,11 +97,16 @@ class TrainDagger:
                 action, next_pol_state = policy.predict(
                     cur_state, cur_pol_state, cur_episode_start
                 )
-            a = action.cpu().numpy()[0]
+            a = action
             next_state, reward, done, trunc, _ = env.step(a)
 
             states.append(cur_state)
-            pol_states.append(cur_pol_state)
+            if cur_pol_state:
+                pol_states[0].append(cur_pol_state[0])
+                pol_states[1].append(cur_pol_state[1])
+            else:
+                pol_states[0].append(None)
+                pol_states[1].append(None)
             episode_starts.append(cur_episode_start.item())
             old_actions.append(a)
             timesteps.append(t)
@@ -108,7 +116,10 @@ class TrainDagger:
 
             cur_state = next_state
             cur_pol_state = next_pol_state
-            episode_starts = done
+            episode_starts[0] = done
+
+        pol_states[0][0] = np.zeros_like(pol_states[1][0])
+        pol_states[0][1] = np.zeros_like(pol_states[1][1])
 
         return states, old_actions, timesteps, rewards, rgbs, pol_states, episode_starts
 
@@ -124,11 +135,7 @@ class TrainDagger:
             state_tensor = torch.tensor(
                 np.expand_dims(state, axis=0), dtype=torch.float32, device=self.device
             )
-            action = (
-                self.expert_policy.predict(state_tensor, deterministic=True)
-                .cpu()
-                .numpy()
-            )
+            action = self.expert_policy.predict(state_tensor, deterministic=True)[0]
         return action
 
     def update_training_data(self, num_trajectories_per_batch_collection=20):
@@ -145,7 +152,7 @@ class TrainDagger:
         new_states = []
         new_actions = []
         new_timesteps = []
-        next_pol_states = []
+        next_pol_states = ([], [])
         new_episode_starts = []
 
         for i in range(num_trajectories_per_batch_collection):
@@ -158,15 +165,21 @@ class TrainDagger:
                 expert_actions.append(self.call_expert_policy(state))
 
             new_states.append(states)
+            print(len(states))
             new_actions.append(expert_actions)
             new_timesteps.append(timesteps)
-            next_pol_states.append(pol_states)
+            next_pol_states[0].append(pol_states[0])
+            next_pol_states[1].append(pol_states[1])
             new_episode_starts.append(episode_starts)
 
         new_states_T_S = np.concatenate(new_states, axis=0)
         new_actions_T_A = np.concatenate(new_actions, axis=0)
         new_timesteps_T = np.concatenate(new_timesteps, axis=0)
-        new_pol_states_T_S = np.concatenate(next_pol_states, axis=0)
+        new_pol_states_T_S = (
+            np.concatenate(next_pol_states[0], axis=0),
+            np.concatenate(next_pol_states[1], axis=0),
+        )
+        print(new_states_T_S.shape, new_pol_states_T_S[0].shape)
         new_episode_starts_T = np.concatenate(new_episode_starts, axis=0)
 
         if self.states is None:
@@ -174,14 +187,15 @@ class TrainDagger:
             self.states = new_states_T_S
             self.actions = new_actions_T_A
             self.timesteps = new_timesteps_T
-            self.policy_states = new_pol_states_T_S
+            self.policy_states = RNNStates(*new_pol_states_T_S)
             self.episode_starts = new_episode_starts_T
         else:
             self.states = np.append(self.states, new_states_T_S, axis=0)
             self.actions = np.append(self.actions, new_actions_T_A, axis=0)
             self.timesteps = np.append(self.timesteps, new_timesteps_T, axis=0)
-            self.policy_states = np.append(
-                self.policy_states, new_pol_states_T_S, axis=0
+            self.policy_states = RNNStates(
+                np.append(self.policy_states[0], new_pol_states_T_S[0], axis=0),
+                np.append(self.policy_states[1], new_pol_states_T_S[1], axis=0),
             )
             self.episode_starts = np.append(
                 self.episode_starts, new_episode_starts_T, axis=0
@@ -294,12 +308,26 @@ class TrainDagger:
         actions = actions.to(self.device)
         timesteps = timesteps.to(self.device)
 
-        loss_fn = nn.MSELoss()
         self.optimizer.zero_grad()
-        predicted_actions = self.policy.predict(
-            states, state=pol_states, episode_start=episode_starts
+        # policy.evaluate_actions's type signatures are incorrect.
+        # See https://github.com/DLR-RM/stable-baselines3/issues/1679
+        (_, log_prob, entropy) = self.policy.evaluate_actions(
+            states, actions, pol_states, episode_starts  # type: ignore[arg-type]
         )
-        loss = loss_fn(predicted_actions, actions)
+        log_prob = log_prob.mean()
+        entropy = entropy.mean() if entropy is not None else None
+
+        # l2_norms = [torch.sum(torch.square(w)) for w in self.policy.parameters()]
+        # l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
+        # # sum of list defaults to float(0) if len == 0.
+        # assert isinstance(l2_norm, torch.Tensor)
+
+        ent_loss = -self.ent_weight * (
+            entropy if entropy is not None else torch.zeros(1)
+        )
+        neglogp = -log_prob
+        # l2_loss = self.l2_weight * l2_norm
+        loss = neglogp + ent_loss  # + l2_loss
         loss.backward()
         self.optimizer.step()
 
@@ -317,9 +345,10 @@ class TrainDagger:
         states = torch.tensor(self.states[indices], device=self.device).float()
         actions = torch.tensor(self.actions[indices], device=self.device).float()
         timesteps = torch.tensor(self.timesteps[indices], device=self.device)
-        pol_states = torch.tensor(
-            self.policy_states[indices], device=self.device
-        ).float()
+        pol_states = RNNStates(
+            torch.tensor(self.policy_states[0][indices], device=self.device).float(),
+            torch.tensor(self.policy_states[1][indices], device=self.device).float(),
+        )
         episode_starts = torch.tensor(
             self.episode_starts[indices], device=self.device
         ).float()
@@ -340,10 +369,6 @@ class RecurrentDaggerWrapper(PolicyWrapper):
         rng = np.random.default_rng(0)
 
         device = "cpu"
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif torch.mps.is_available():
-            device = "mps"
 
         self.policy: RecurrentActorCriticPolicy = policy
 
