@@ -42,8 +42,8 @@ class Buggy:
     wheelbase_f: float = 1.104 / 2 # m
     wheelbase_r: float = 1.104 / 2# m
     angle_clip: float = np.pi / 9  # rad
-    mass: float = 41 # kg
-    inertia: float = 4.05 # kg * m^2
+    mass: float = 50 # kg
+    inertia: float = 15 # kg * m^2
 
     # Buggy Control
     delta: float = 0  # rad
