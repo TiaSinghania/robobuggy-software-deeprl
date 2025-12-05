@@ -52,7 +52,6 @@ class TrainDagger:
         self.loss_fn = nn.MSELoss()
         self.device = device
 
-        self.policy = self.policy.to(self.device)
         self.expert_policy = self.expert_policy.to(self.device)
 
         self.states = None
@@ -125,7 +124,7 @@ class TrainDagger:
 
         return states, old_actions, timesteps, rewards, rgbs, pol_states, episode_starts
 
-    def call_expert_policy(self, state):
+    def call_expert_policy(self, states):
         """
         Calls the expert policy to get an action.
 
@@ -134,11 +133,11 @@ class TrainDagger:
         """
         # takes in a np array state and returns an np array action
         with torch.no_grad():
-            state_tensor = torch.tensor(
-                np.expand_dims(state, axis=0), dtype=torch.float32, device=self.device
-            )
-            action = self.expert_policy.predict(state_tensor, deterministic=True)[0]
-        return action
+            state_tensor = torch.tensor(states, dtype=torch.float32, device=self.device)
+            actions = self.expert_policy.predict(state_tensor, deterministic=True)[0]
+
+        assert state_tensor.shape[0] == actions.shape[0]
+        return actions
 
     def update_training_data(self, num_trajectories_per_batch_collection=20):
         """
@@ -162,9 +161,7 @@ class TrainDagger:
                 self.generate_trajectory(self.env, self.policy)
             )
 
-            expert_actions = []
-            for state in states:
-                expert_actions.append(self.call_expert_policy(state))
+            expert_actions = self.call_expert_policy(states)
 
             new_states.append(states)
             new_actions.append(expert_actions)
@@ -285,7 +282,8 @@ class TrainDagger:
             max_rewards.append(torch.max(rewards))
             pbar.set_postfix(
                 {
-                    "Reward": mean_rewards[0],
+                    "Mean Reward": mean_rewards[-1],
+                    "Max Reward": max_rewards[-1],
                     "Loss": {
                         losses[
                             i
@@ -299,20 +297,6 @@ class TrainDagger:
             self.policy.train()
 
         # END STUDENT SOLUTION
-        x_axis = (
-            np.arange(0, len(mean_rewards)) * num_training_steps_per_batch_collection
-        )
-        plt.figure()
-        plt.plot(x_axis, mean_rewards, label="mean rewards")
-        plt.plot(x_axis, median_rewards, label="median rewards")
-        plt.plot(x_axis, max_rewards, label="max rewards")
-        plt.legend()
-        plt.savefig(f"DAgger_rewards.png")
-
-        plt.figure()
-        plt.plot(np.arange(0, len(losses)), losses, label="training loss")
-        plt.legend()
-        plt.savefig(f"DAgger_losses.png")
 
         return losses
 
@@ -408,7 +392,7 @@ class RecurrentDaggerWrapper(PolicyWrapper):
 
         self.trainer = TrainDagger(
             env=self.env,
-            policy=policy,
+            policy=self.policy,
             optimizer=optim,
             expert_policy=expert,
             device=device,

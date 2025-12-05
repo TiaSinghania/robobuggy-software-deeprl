@@ -6,6 +6,7 @@ import numpy as np
 import utm
 from scipy.interpolate import Akima1DInterpolator, CubicSpline
 from scipy.spatial import cKDTree
+from scipy.spatial.distance import cdist
 import src.simulator.environment
 
 
@@ -369,6 +370,86 @@ class Trajectory:
         # (x, y), rotated by 90 deg ccw = (-y, x)
         unit_normal = np.vstack((-unit_derivative[:, 1], unit_derivative[:, 0])).T
         return unit_normal
+
+    def get_closest_index_on_path_batched(
+        self, x, y, start_index=0, end_index=None, subsample_resolution=1000
+    ):
+        """Gets the index of the closest point on the trajectory to the given point
+
+        Args:
+            x (float): x coordinate
+            y (float): y coordinate
+            start_index (int, optional): index to start searching from. Defaults to 0.
+            end_index (int, optional): index to end searching at. Defaults to None (disable).
+            subsample_resolution: resolution of the resulting interpolation
+        Returns:
+            float: index along the trajectory
+        """
+        # If end_index is not specified, use the length of the trajectory
+        if end_index is None:
+            end_index = len(self.positions)  # sketch, 0-indexing where??
+
+        # Use KD-Tree for fast initial guess ONLY if we are doing a global search
+        # We only use this if the user hasn't narrowed the search window significantly
+        # (Checking if start_index is 0 is a heuristic for "global search")
+        if (
+            self.tree is not None
+            and start_index == 0
+            and end_index >= len(self.positions)
+        ):
+            _, min_ind = self.tree.query(np.stack([x, y], axis=1), k=1)
+
+            # Narrow the search window to around the hit
+            # We go +/- 2 indices to be safe
+            start_index_N = np.max([np.zeros_like(min_ind), min_ind - 2], axis=0)
+            end_index_N = np.max(
+                [np.ones_like(min_ind) * len(self.positions), min_ind + 3], axis=0
+            )
+
+        else:
+            assert False, "Only supporting full array searches batched"
+            # Floor/ceil the start/end indices
+            start_index_N = np.max(
+                np.zeros_like(x),
+                np.ones_like(x) * np.floor(start_index).astype(np.int32),
+            )
+            end_index_N = np.max(
+                np.zeros_like(x), np.ones_like(x) * np.ceil(end_index).astype(np.int32)
+            )
+
+            # Calculate the distance from the point to each point on the trajectory
+            distances = (self.positions[start_index : end_index + 1, 0] - x) ** 2 + (
+                self.positions[start_index : end_index + 1, 1] - y
+            ) ** 2  # Don't need to squareroot as it is a relative distance
+
+            min_ind = np.argmin(distances) + start_index
+
+            start_index = max(0, min_ind - 1)  # Protection in case min_ind is too low
+            end_index = min(
+                len(self.positions), min_ind + 1
+            )  # Prtoecting in case min_ind too high
+            # Theoretically start_index and end_index are just two apart
+
+        # Now interpolate at a higher resolution to get a more accurate result
+        r_interp = self.interpolation(
+            np.linspace(start_index_N, end_index_N, subsample_resolution + 1)
+        )
+        x_interp, y_interp = (
+            r_interp[:, :, 0],
+            r_interp[:, :, 1],
+        )  # x_interp, y_interp are numpy column vectors
+
+        distances = (x_interp - x) ** 2 + (
+            y_interp - y
+        ) ** 2  # Again distances are relative
+
+        # Return the rational index of the closest point
+        return (
+            np.argmin(distances, axis=0)
+            / subsample_resolution
+            * (end_index - start_index)
+            + start_index
+        )
 
     def get_closest_index_on_path(
         self, x, y, start_index=0, end_index=None, subsample_resolution=1000

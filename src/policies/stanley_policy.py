@@ -27,27 +27,26 @@ class StanleyPolicy(policies.BasePolicy):
         self, observation: PyTorchObs, deterministic: bool = False
     ) -> torch.Tensor:
         assert isinstance(observation, torch.Tensor)
-        assert observation.ndim == 2 and observation.shape == (
-            1,
-            9,
-        ), f"Dimensions {observation.ndim}, Shape {observation.shape}"
+        # assert observation.ndim == 2 and observation.shape == (
+        #     1,
+        #     9,
+        # ), f"Dimensions {observation.ndim}, Shape {observation.shape}"
 
-        current_speed = observation[0, 2].item()
-        heading = observation[0, 3].item()
-        x, y = observation[0, 0].item(), observation[0, 1].item()  # (Easting, Northing)
+        current_speed = observation[:, 2].numpy()
+        heading = observation[:, 3].numpy()
+        x, y = (
+            observation[:, 0].numpy(),
+            observation[:, 1].numpy(),
+        )  # (Easting, Northing)
 
         front_x = x + self.WHEELBASE * np.cos(heading)
         front_y = y + self.WHEELBASE * np.sin(heading)
 
         # setting range of indices to search so we don't have to search the entire path
-        traj_index = self.trajectory.get_closest_index_on_path(
+        traj_index = self.trajectory.get_closest_index_on_path_batched(
             front_x,
             front_y,
         )
-
-        if traj_index >= self.trajectory.get_num_points() - 1:
-            return torch.Tensor([0], device=observation.device)
-
         # Use heading at the closest index
         ref_heading = self.trajectory.get_heading_by_index(traj_index)
 
@@ -60,10 +59,10 @@ class StanleyPolicy(policies.BasePolicy):
         # the reference trajectory
         closest_position = self.trajectory.get_position_by_index(traj_index)
         next_position = self.trajectory.get_position_by_index(traj_index + 0.0001)
-        x1 = closest_position[0]
-        y1 = closest_position[1]
-        x2 = next_position[0]
-        y2 = next_position[1]
+        x1 = closest_position[:, 0]
+        y1 = closest_position[:, 1]
+        x2 = next_position[:, 0]
+        y2 = next_position[:, 1]
         error_dist = -((x - x1) * (y2 - y1) - (y - y1) * (x2 - x1)) / np.sqrt(
             (y2 - y1) ** 2 + (x2 - x1) ** 2
         )
@@ -76,6 +75,8 @@ class StanleyPolicy(policies.BasePolicy):
         # Determine steering_command
         steering_cmd = error_heading + cross_track_component
         steering_cmd = np.clip(steering_cmd, -np.pi / 9, np.pi / 9) / (np.pi / 9)
+
+        steering_cmd[traj_index >= self.trajectory.get_num_points() - 1] = 0
 
         return torch.Tensor(steering_cmd, device=observation.device)
 
