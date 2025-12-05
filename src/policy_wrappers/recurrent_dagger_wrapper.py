@@ -48,6 +48,8 @@ class TrainDagger:
         self.policy = policy
         self.expert_policy = expert_policy
         self.optimizer = optimizer
+
+        self.loss_fn = nn.MSELoss()
         self.device = device
 
         self.policy = self.policy.to(self.device)
@@ -118,8 +120,8 @@ class TrainDagger:
             cur_pol_state = next_pol_state
             episode_starts[0] = done
 
-        pol_states[0][0] = np.zeros_like(pol_states[1][0])
-        pol_states[0][1] = np.zeros_like(pol_states[1][1])
+        pol_states[0][0] = np.zeros_like(pol_states[0][1])
+        pol_states[1][0] = np.zeros_like(pol_states[1][1])
 
         return states, old_actions, timesteps, rewards, rgbs, pol_states, episode_starts
 
@@ -165,7 +167,6 @@ class TrainDagger:
                 expert_actions.append(self.call_expert_policy(state))
 
             new_states.append(states)
-            print(len(states))
             new_actions.append(expert_actions)
             new_timesteps.append(timesteps)
             next_pol_states[0].append(pol_states[0])
@@ -179,7 +180,6 @@ class TrainDagger:
             np.concatenate(next_pol_states[0], axis=0),
             np.concatenate(next_pol_states[1], axis=0),
         )
-        print(new_states_T_S.shape, new_pol_states_T_S[0].shape)
         new_episode_starts_T = np.concatenate(new_episode_starts, axis=0)
 
         if self.states is None:
@@ -218,8 +218,10 @@ class TrainDagger:
         # BEGIN STUDENT SOLUTION
         rewards = torch.zeros((num_trajectories_per_batch_collection))
         for i in range(num_trajectories_per_batch_collection):
-            _, _, _, traj_rewards, _ = self.generate_trajectory(self.env, self.policy)
-            rewards[i] = torch.tensor(sum(traj_rewards) / len(traj_rewards))
+            _, _, _, traj_rewards, _, _, _ = self.generate_trajectory(
+                self.env, self.policy
+            )
+            rewards[i] = torch.tensor(sum(traj_rewards))
 
         # END STUDENT SOLUTION
 
@@ -260,18 +262,39 @@ class TrainDagger:
         for i in pbar:
             self.update_training_data(num_trajectories_per_batch_collection)
 
-            for j in range(num_training_steps_per_batch_collection):
+            pbar_train = tqdm(
+                range(num_training_steps_per_batch_collection), desc="Train Loop"
+            )
+            for j in pbar_train:
                 losses[i * num_training_steps_per_batch_collection + j] = (
                     self.training_step(batch_size=batch_size)
                 )
-
+                if (j % 10) == 0:
+                    pbar_train.set_postfix(
+                        {
+                            "Loss": losses[
+                                i * num_training_steps_per_batch_collection + j
+                            ]
+                        }
+                    )
             # eval
             self.policy.eval()
             rewards = self.generate_trajectories(num_trajectories_per_batch_collection)
             mean_rewards.append(torch.mean(rewards))
             median_rewards.append(torch.median(rewards))
             max_rewards.append(torch.max(rewards))
-            pbar.set_postfix({"Reward": mean_rewards[0]})
+            pbar.set_postfix(
+                {
+                    "Reward": mean_rewards[0],
+                    "Loss": {
+                        losses[
+                            i
+                            * num_training_steps_per_batch_collection : (i + 1)
+                            * num_training_steps_per_batch_collection
+                        ].mean()
+                    },
+                }
+            )
 
             self.policy.train()
 
@@ -293,7 +316,12 @@ class TrainDagger:
 
         return losses
 
-    def training_step(self, batch_size):
+    def training_step(
+        self,
+        batch_size,
+        ent_weight: float = 1e-3,
+        l2_weight: float = 0.0,
+    ):
         """
         Simple training step implementation
 
@@ -310,25 +338,25 @@ class TrainDagger:
 
         self.optimizer.zero_grad()
         # policy.evaluate_actions's type signatures are incorrect.
-        # See https://github.com/DLR-RM/stable-baselines3/issues/1679
-        (_, log_prob, entropy) = self.policy.evaluate_actions(
-            states, actions, pol_states, episode_starts  # type: ignore[arg-type]
+        predicted_actions, _, _, _ = self.policy.forward(
+            obs=states, lstm_states=pol_states, episode_starts=episode_starts  # type: ignore[arg-type]
         )
-        log_prob = log_prob.mean()
-        entropy = entropy.mean() if entropy is not None else None
+        loss = self.loss_fn(predicted_actions.squeeze(), actions.squeeze())
+        loss.backward()
+        # log_prob = log_prob.mean()
+        # entropy = entropy.mean() if entropy is not None else None
 
         # l2_norms = [torch.sum(torch.square(w)) for w in self.policy.parameters()]
         # l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
-        # # sum of list defaults to float(0) if len == 0.
+        # # # sum of list defaults to float(0) if len == 0.
         # assert isinstance(l2_norm, torch.Tensor)
 
-        ent_loss = -self.ent_weight * (
-            entropy if entropy is not None else torch.zeros(1)
-        )
-        neglogp = -log_prob
-        # l2_loss = self.l2_weight * l2_norm
-        loss = neglogp + ent_loss  # + l2_loss
-        loss.backward()
+        # ent_loss = -ent_weight * (entropy if entropy is not None else torch.zeros(1))
+        # neglogp = -log_prob
+        # print(neglogp)
+        # l2_loss = l2_weight * l2_norm
+        # loss = neglogp + ent_loss + l2_loss
+        # loss.backward()
         self.optimizer.step()
 
         return loss.detach().cpu().item()
