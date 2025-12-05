@@ -281,18 +281,18 @@ class TrainDagger:
             median_rewards.append(torch.median(rewards))
             max_rewards.append(torch.max(rewards))
             out = {
-                    "Mean Reward": mean_rewards[-1],
-                    "Max Reward": max_rewards[-1],
-                    "Loss": {
-                        losses[
-                            i
-                            * num_training_steps_per_batch_collection : (i + 1)
-                            * num_training_steps_per_batch_collection
-                        ].mean()
-                    },
-                }
+                "Mean Reward": mean_rewards[-1],
+                "Max Reward": max_rewards[-1],
+                "Loss": {
+                    losses[
+                        i
+                        * num_training_steps_per_batch_collection : (i + 1)
+                        * num_training_steps_per_batch_collection
+                    ].mean()
+                },
+            }
             print(out)
-            pbar.set_postfix(          )
+            pbar.set_postfix(out)
 
             self.policy.train()
 
