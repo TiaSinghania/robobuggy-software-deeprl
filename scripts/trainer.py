@@ -121,7 +121,7 @@ def main():
                 env=env,
                 dirpath=dirpath,
             )
-            warm_wrapper.train(3000)
+            warm_wrapper.train(5000)
             warm_wrapper.save()
         policy_wrapper.train(args.timesteps)
         policy_wrapper.save()
