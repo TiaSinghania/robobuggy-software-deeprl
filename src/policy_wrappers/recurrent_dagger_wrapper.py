@@ -17,6 +17,7 @@ from typing import Optional
 
 
 from sb3_contrib.common.recurrent.type_aliases import RNNStates
+from scripts.visualize import visualize_environment
 
 try:
     import wandb
@@ -117,11 +118,15 @@ class TrainDagger:
 
             cur_state = next_state
             cur_pol_state = next_pol_state
-            episode_starts[0] = done
+            cur_episode_start[0] = done
 
         pol_states[0][0] = np.zeros_like(pol_states[0][1])
         pol_states[1][0] = np.zeros_like(pol_states[1][1])
 
+        pol_states = (
+            np.concat(pol_states[0], axis=1),
+            np.concat(pol_states[1], axis=1),
+        )
         return states, old_actions, timesteps, rewards, rgbs, pol_states, episode_starts
 
     def call_expert_policy(self, states):
@@ -173,9 +178,9 @@ class TrainDagger:
         new_states_T_S = np.concatenate(new_states, axis=0)
         new_actions_T_A = np.concatenate(new_actions, axis=0)
         new_timesteps_T = np.concatenate(new_timesteps, axis=0)
-        new_pol_states_T_S = (
-            np.concatenate(next_pol_states[0], axis=0),
-            np.concatenate(next_pol_states[1], axis=0),
+        new_pol_states_1_T_S = (
+            np.concatenate(next_pol_states[0], axis=1),
+            np.concatenate(next_pol_states[1], axis=1),
         )
         new_episode_starts_T = np.concatenate(new_episode_starts, axis=0)
 
@@ -184,20 +189,19 @@ class TrainDagger:
             self.states = new_states_T_S
             self.actions = new_actions_T_A
             self.timesteps = new_timesteps_T
-            self.policy_states = RNNStates(*new_pol_states_T_S)
+            self.policy_states = new_pol_states_1_T_S
             self.episode_starts = new_episode_starts_T
         else:
             self.states = np.append(self.states, new_states_T_S, axis=0)
             self.actions = np.append(self.actions, new_actions_T_A, axis=0)
             self.timesteps = np.append(self.timesteps, new_timesteps_T, axis=0)
-            self.policy_states = RNNStates(
-                np.append(self.policy_states[0], new_pol_states_T_S[0], axis=0),
-                np.append(self.policy_states[1], new_pol_states_T_S[1], axis=0),
+            self.policy_states = (
+                np.append(self.policy_states[0], new_pol_states_1_T_S[0], axis=1),
+                np.append(self.policy_states[1], new_pol_states_1_T_S[1], axis=1),
             )
             self.episode_starts = np.append(
                 self.episode_starts, new_episode_starts_T, axis=0
             )
-
         # return rewards
 
     def generate_trajectories(self, num_trajectories_per_batch_collection=20):
@@ -215,10 +219,10 @@ class TrainDagger:
         # BEGIN STUDENT SOLUTION
         rewards = torch.zeros((num_trajectories_per_batch_collection))
         for i in range(num_trajectories_per_batch_collection):
-            _, _, _, traj_rewards, _, _, _ = self.generate_trajectory(
+            _, _, timesteps, traj_rewards, _, _, _ = self.generate_trajectory(
                 self.env, self.policy
             )
-            rewards[i] = torch.tensor(sum(traj_rewards))
+            rewards[i] = sum(traj_rewards)
 
         # END STUDENT SOLUTION
 
@@ -259,21 +263,10 @@ class TrainDagger:
         for i in pbar:
             self.update_training_data(num_trajectories_per_batch_collection)
 
-            pbar_train = tqdm(
-                range(num_training_steps_per_batch_collection), desc="Train Loop"
-            )
-            for j in pbar_train:
+            for j in range(num_training_steps_per_batch_collection):
                 losses[i * num_training_steps_per_batch_collection + j] = (
                     self.training_step(batch_size=batch_size)
                 )
-                if (j % 10) == 0:
-                    pbar_train.set_postfix(
-                        {
-                            "Loss": losses[
-                                i * num_training_steps_per_batch_collection + j
-                            ]
-                        }
-                    )
             # eval
             self.policy.eval()
             rewards = self.generate_trajectories(num_trajectories_per_batch_collection)
@@ -322,10 +315,22 @@ class TrainDagger:
 
         self.optimizer.zero_grad()
         # policy.evaluate_actions's type signatures are incorrect.
-        predicted_actions, _, _, _ = self.policy.forward(
+        # for i in range(batch_size):
+        #     (
+        #         predicted_action,
+        #         _,
+        #     ) = self.policy.predict(
+        #         observation=states[i],
+        #         state=(pol_states[0][:, i, :], pol_states[1][:, i, :]),
+        #         episode_start=episode_starts[i],
+        #     )
+        #     predicted_actions.append(predicted_action)
+        predicted_action_distrib, _ = self.policy.get_distribution(
             obs=states, lstm_states=pol_states, episode_starts=episode_starts  # type: ignore[arg-type]
         )
-        loss = self.loss_fn(predicted_actions.squeeze(), actions.squeeze())
+        loss = self.loss_fn(
+            predicted_action_distrib.get_actions().squeeze(), actions.squeeze()
+        )
         loss.backward()
         # log_prob = log_prob.mean()
         # entropy = entropy.mean() if entropy is not None else None
@@ -357,9 +362,13 @@ class TrainDagger:
         states = torch.tensor(self.states[indices], device=self.device).float()
         actions = torch.tensor(self.actions[indices], device=self.device).float()
         timesteps = torch.tensor(self.timesteps[indices], device=self.device)
-        pol_states = RNNStates(
-            torch.tensor(self.policy_states[0][indices], device=self.device).float(),
-            torch.tensor(self.policy_states[1][indices], device=self.device).float(),
+        pol_states = (
+            torch.tensor(
+                self.policy_states[0][:, indices, :], device=self.device
+            ).float(),
+            torch.tensor(
+                self.policy_states[1][:, indices, :], device=self.device
+            ).float(),
         )
         episode_starts = torch.tensor(
             self.episode_starts[indices], device=self.device
