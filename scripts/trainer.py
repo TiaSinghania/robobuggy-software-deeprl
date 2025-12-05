@@ -14,6 +14,7 @@ from src.policy_wrappers.random_wrapper import Random_Wrapper
 from src.policy_wrappers.stanley_wrapper import Stanley_Wrapper
 from src.policy_wrappers.dagger_wrapper import DAgger_Wrapper
 from src.policy_wrappers.lstm_ppo_wrapper import LSTM_PPO_Wrapper
+from src.policy_wrappers.recurrent_dagger_wrapper import RecurrentDaggerWrapper
 
 
 def main():
@@ -67,20 +68,20 @@ def main():
     else:
         dirpath = f"./logs/{args.dirname}"
 
-    # env = gym.make(
-    #     "BuggyCourseEnv-v1", rate=20, max_episode_steps=4000, include_pos_in_obs=False
-    # )
-
-    env = make_vec_env(
-        "BuggyCourseEnv-v1",
-        n_envs=10,
-        vec_env_cls=SubprocVecEnv,
-        env_kwargs={
-            "rate": 20,
-            "max_episode_steps": 4000,
-            "include_pos_in_obs": True,
-        },
+    env = gym.make(
+        "BuggyCourseEnv-v1", rate=20, max_episode_steps=4000, include_pos_in_obs=True
     )
+
+    # env = make_vec_env(
+    #     "BuggyCourseEnv-v1",
+    #     n_envs=10,
+    #     vec_env_cls=SubprocVecEnv,
+    #     env_kwargs={
+    #         "rate": 20,
+    #         "max_episode_steps": 4000,
+    #         "include_pos_in_obs": True,
+    #     },
+    # )
 
     policy_wrapper = None
     match args.policy:
@@ -102,6 +103,12 @@ def main():
             )
         case "lstm":
             policy_wrapper = LSTM_PPO_Wrapper(env=env, dirpath=dirpath)
+            policy_wrapper = RecurrentDaggerWrapper(
+                reference_traj_path="src/util/buggycourse_safe.json",
+                policy=policy_wrapper.policy.policy,
+                env=env,
+                dirpath=dirpath,
+            )
         case _:
             raise Exception("INVALID POLICY")
 

@@ -26,8 +26,8 @@ class LSTM_PPO_Wrapper(PolicyWrapper):
         super().__init__(**kwargs)
 
         # Monitor breaks with vec envs
-        self.env = VecMonitor(self.env, self.dirpath + "/monitor.csv")
-        # self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
+        # self.env = VecMonitor(self.env, self.dirpath + "/monitor.csv")
+        self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
         self.policy: RecurrentPPO = RecurrentPPO(
             "MlpLstmPolicy", self.env, verbose=1, device="cpu"
         )
@@ -40,7 +40,10 @@ class LSTM_PPO_Wrapper(PolicyWrapper):
         print("Training complete.")
 
         plot_results(
-            [self.dirpath + "/"], timesteps, results_plotter.X_TIMESTEPS, "Recurrent PPO Buggy"
+            [self.dirpath + "/"],
+            timesteps,
+            results_plotter.X_TIMESTEPS,
+            "Recurrent PPO Buggy",
         )
 
         plt.savefig(self.dirpath + "/ppo_rewards.png")

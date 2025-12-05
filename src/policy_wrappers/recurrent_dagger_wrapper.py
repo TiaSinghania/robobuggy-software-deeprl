@@ -10,6 +10,7 @@ import pickle
 import matplotlib.pyplot as plt
 from src.policy_wrappers.policy_wrapper import PolicyWrapper
 from imitation.util.util import make_vec_env
+from stable_baselines3.common.vec_env import VecEnv
 from src.policies.stanley_policy import StanleyPolicy
 from sb3_contrib.common.recurrent.policies import RecurrentActorCriticPolicy
 from typing import Optional
@@ -24,10 +25,10 @@ class TrainDagger:
 
     def __init__(
         self,
-        env,
-        model,
-        optimizer,
-        expert_model,
+        env: VecEnv,
+        policy: RecurrentActorCriticPolicy,
+        optimizer: torch.optim,
+        expert_policy: StanleyPolicy,
         device="cpu",
     ):
         """
@@ -36,23 +37,26 @@ class TrainDagger:
         Args:
             env: an OpenAI Gym environment.
             model: the model to be trained.
-            expert_model: the expert model that provides the expert actions.
+            expert_policy: the expert model that provides the expert actions.
             device: the device to be used for training.
 
         """
         self.env = env
-        self.model = model
-        self.expert_model = expert_model
+        self.policy = policy
+        self.expert_policy = expert_policy
         self.optimizer = optimizer
         self.device = device
-        model.set_device(self.device)
 
-        self.expert_model = self.expert_model.to(self.device)
+        self.policy = self.policy.to(self.device)
+        self.expert_policy = self.expert_policy.to(self.device)
+
         self.states = None
+        self.policy_states = None
         self.actions = None
+        self.episode_starts = None
         self.timesteps = None
 
-    def generate_trajectory(self, env, policy, render=False):
+    def generate_trajectory(self, env: VecEnv, policy: RecurrentActorCriticPolicy):
         """Collects one rollout from the policy in an environment. The environment
         should implement the OpenAI Gym interface. A rollout ends when done=True. The
         number of states and actions should be the same, so you should not include
@@ -70,34 +74,43 @@ class TrainDagger:
             rgbs: list of rgb images from the environment for each timestep
         """
 
-        states, old_actions, timesteps, rewards, rgbs = [], [], [], [], []
+        states, old_actions, timesteps, rewards, rgbs, pol_states, episode_starts = (
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
 
         done, trunc = False, False
         cur_state, _ = env.reset()
-        if render:
-            rgbs.append(env.render())
+        cur_pol_state = None
+        cur_episode_start = np.ones((1,), dtype=bool)
         t = 0
         while (not done) and (not trunc):
             with torch.no_grad():
-                p = policy(
-                    torch.from_numpy(cur_state).to(self.device).float().unsqueeze(0),
-                    torch.tensor(t).to(self.device).long().unsqueeze(0),
+                action, next_pol_state = policy.predict(
+                    cur_state, cur_pol_state, cur_episode_start
                 )
-            a = p.cpu().numpy()[0]
+            a = action.cpu().numpy()[0]
             next_state, reward, done, trunc, _ = env.step(a)
 
             states.append(cur_state)
+            pol_states.append(cur_pol_state)
+            episode_starts.append(cur_episode_start.item())
             old_actions.append(a)
             timesteps.append(t)
             rewards.append(reward)
-            if render:
-                rgbs.append(env.render())
 
             t += 1
 
             cur_state = next_state
+            cur_pol_state = next_pol_state
+            episode_starts = done
 
-        return states, old_actions, timesteps, rewards, rgbs
+        return states, old_actions, timesteps, rewards, rgbs, pol_states, episode_starts
 
     def call_expert_policy(self, state):
         """
@@ -112,11 +125,10 @@ class TrainDagger:
                 np.expand_dims(state, axis=0), dtype=torch.float32, device=self.device
             )
             action = (
-                self.expert_model.choose_action(state_tensor, deterministic=True)
+                self.expert_policy.predict(state_tensor, deterministic=True)
                 .cpu()
                 .numpy()
             )
-            action = np.clip(action, -1, 1)[0]
         return action
 
     def update_training_data(self, num_trajectories_per_batch_collection=20):
@@ -133,10 +145,12 @@ class TrainDagger:
         new_states = []
         new_actions = []
         new_timesteps = []
+        next_pol_states = []
+        new_episode_starts = []
 
         for i in range(num_trajectories_per_batch_collection):
-            states, actions, timesteps, rewards, rgbs = self.generate_trajectory(
-                self.env, self.model
+            states, actions, timesteps, rewards, rgbs, pol_states, episode_starts = (
+                self.generate_trajectory(self.env, self.policy)
             )
 
             expert_actions = []
@@ -146,20 +160,32 @@ class TrainDagger:
             new_states.append(states)
             new_actions.append(expert_actions)
             new_timesteps.append(timesteps)
+            next_pol_states.append(pol_states)
+            new_episode_starts.append(episode_starts)
 
         new_states_T_S = np.concatenate(new_states, axis=0)
         new_actions_T_A = np.concatenate(new_actions, axis=0)
         new_timesteps_T = np.concatenate(new_timesteps, axis=0)
+        new_pol_states_T_S = np.concatenate(next_pol_states, axis=0)
+        new_episode_starts_T = np.concatenate(new_episode_starts, axis=0)
 
         if self.states is None:
             assert self.actions is None and self.timesteps is None
             self.states = new_states_T_S
             self.actions = new_actions_T_A
             self.timesteps = new_timesteps_T
+            self.policy_states = new_pol_states_T_S
+            self.episode_starts = new_episode_starts_T
         else:
             self.states = np.append(self.states, new_states_T_S, axis=0)
             self.actions = np.append(self.actions, new_actions_T_A, axis=0)
             self.timesteps = np.append(self.timesteps, new_timesteps_T, axis=0)
+            self.policy_states = np.append(
+                self.policy_states, new_pol_states_T_S, axis=0
+            )
+            self.episode_starts = np.append(
+                self.episode_starts, new_episode_starts_T, axis=0
+            )
 
         # return rewards
 
@@ -178,7 +204,7 @@ class TrainDagger:
         # BEGIN STUDENT SOLUTION
         rewards = torch.zeros((num_trajectories_per_batch_collection))
         for i in range(num_trajectories_per_batch_collection):
-            _, _, _, traj_rewards, _ = self.generate_trajectory(self.env, self.model)
+            _, _, _, traj_rewards, _ = self.generate_trajectory(self.env, self.policy)
             rewards[i] = torch.tensor(sum(traj_rewards) / len(traj_rewards))
 
         # END STUDENT SOLUTION
@@ -213,7 +239,7 @@ class TrainDagger:
         losses = np.zeros(
             num_batch_collection_steps * num_training_steps_per_batch_collection
         )
-        self.model.train()
+        self.policy.train()
         mean_rewards, median_rewards, max_rewards = [], [], []
         # BEGIN STUDENT SOLUTION
         pbar = tqdm(range(num_batch_collection_steps), desc="Batch")
@@ -221,19 +247,19 @@ class TrainDagger:
             self.update_training_data(num_trajectories_per_batch_collection)
 
             for j in range(num_training_steps_per_batch_collection):
-                pbar.set_postfix({"Training Step": j})
                 losses[i * num_training_steps_per_batch_collection + j] = (
                     self.training_step(batch_size=batch_size)
                 )
 
             # eval
-            self.model.eval()
+            self.policy.eval()
             rewards = self.generate_trajectories(num_trajectories_per_batch_collection)
             mean_rewards.append(torch.mean(rewards))
             median_rewards.append(torch.median(rewards))
             max_rewards.append(torch.max(rewards))
+            pbar.set_postfix({"Reward": mean_rewards[0]})
 
-            self.model.train()
+            self.policy.train()
 
         # END STUDENT SOLUTION
         x_axis = (
@@ -260,7 +286,9 @@ class TrainDagger:
         Args:
             batch_size: the batch size to use for training.
         """
-        states, actions, timesteps = self.get_training_batch(batch_size=batch_size)
+        states, actions, timesteps, pol_states, episode_starts = (
+            self.get_training_batch(batch_size=batch_size)
+        )
 
         states = states.to(self.device)
         actions = actions.to(self.device)
@@ -268,7 +296,9 @@ class TrainDagger:
 
         loss_fn = nn.MSELoss()
         self.optimizer.zero_grad()
-        predicted_actions = self.model(states, timesteps)
+        predicted_actions = self.policy.predict(
+            states, state=pol_states, episode_start=episode_starts
+        )
         loss = loss_fn(predicted_actions, actions)
         loss.backward()
         self.optimizer.step()
@@ -287,8 +317,14 @@ class TrainDagger:
         states = torch.tensor(self.states[indices], device=self.device).float()
         actions = torch.tensor(self.actions[indices], device=self.device).float()
         timesteps = torch.tensor(self.timesteps[indices], device=self.device)
+        pol_states = torch.tensor(
+            self.policy_states[indices], device=self.device
+        ).float()
+        episode_starts = torch.tensor(
+            self.episode_starts[indices], device=self.device
+        ).float()
 
-        return states, actions, timesteps
+        return states, actions, timesteps, pol_states, episode_starts
 
 
 class RecurrentDaggerWrapper(PolicyWrapper):
@@ -309,18 +345,9 @@ class RecurrentDaggerWrapper(PolicyWrapper):
         elif torch.mps.is_available():
             device = "mps"
 
-        self.env = make_vec_env(
-            self.env.unwrapped.spec.id,
-            rng=rng,
-            n_envs=1,
-            max_episode_steps=4000,
-            env_make_kwargs={"rate": 20},
-        )
-        self.policy : RecurrentActorCriticPolicy = policy
+        self.policy: RecurrentActorCriticPolicy = policy
 
-        expert = StanleyPolicy(
-            venv=self.env, reference_traj_path=reference_traj_path, device=device
-        )
+        expert = StanleyPolicy(venv=self.env, reference_traj_path=reference_traj_path)
 
         optim = torch.optim.AdamW(
             params=policy.parameters(), lr=0.0001, weight_decay=0.0001
@@ -330,7 +357,7 @@ class RecurrentDaggerWrapper(PolicyWrapper):
             env=self.env,
             policy=policy,
             optimizer=optim,
-            expert_model=expert,
+            expert_policy=expert,
             device=device,
         )
 
@@ -348,13 +375,8 @@ class RecurrentDaggerWrapper(PolicyWrapper):
     def save(
         self,
     ):
-        self.dagger_trainer.save_trainer()
-        print("Model saved to dagger-buggy-course")
+        self.policy.save(f"{self.dirpath}/dagger_saved.pt")
 
     def load(self):
         print("Loading existing DAgger model...")
-
-        self.dagger_trainer = reconstruct_trainer(
-            scratch_dir=self.log_path, venv=self.env
-        )
-        self.policy = self.dagger_trainer.policy
+        self.policy.load(f"{self.dirpath}/dagger_saved.pt", self.policy.device)
