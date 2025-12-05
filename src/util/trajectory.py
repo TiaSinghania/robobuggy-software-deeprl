@@ -372,7 +372,7 @@ class Trajectory:
         return unit_normal
 
     def get_closest_index_on_path_batched(
-        self, x, y, start_index=0, end_index=None, subsample_resolution=1000
+        self, x, y, start_index=0, end_index=None, subsample_resolution=5000
     ):
         """Gets the index of the closest point on the trajectory to the given point
 
@@ -402,7 +402,7 @@ class Trajectory:
             # Narrow the search window to around the hit
             # We go +/- 2 indices to be safe
             start_index_N = np.max([np.zeros_like(min_ind), min_ind - 2], axis=0)
-            end_index_N = np.max(
+            end_index_N = np.min(
                 [np.ones_like(min_ind) * len(self.positions), min_ind + 3], axis=0
             )
 
@@ -444,12 +444,10 @@ class Trajectory:
         ) ** 2  # Again distances are relative
 
         # Return the rational index of the closest point
-        return (
-            np.argmin(distances, axis=0)
-            / subsample_resolution
-            * (end_index - start_index)
-            + start_index
-        )
+
+        return (np.argmin(distances, axis=0) / subsample_resolution) * (
+            end_index_N - start_index_N
+        ) + start_index_N
 
     def get_closest_index_on_path(
         self, x, y, start_index=0, end_index=None, subsample_resolution=1000

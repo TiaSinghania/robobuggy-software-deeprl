@@ -277,9 +277,9 @@ class TrainDagger:
             # eval
             self.policy.eval()
             rewards = self.generate_trajectories(num_trajectories_per_batch_collection)
-            mean_rewards.append(torch.mean(rewards))
-            median_rewards.append(torch.median(rewards))
-            max_rewards.append(torch.max(rewards))
+            mean_rewards.append(torch.mean(rewards).item())
+            median_rewards.append(torch.median(rewards).item())
+            max_rewards.append(torch.max(rewards).item())
             out = {
                 "Mean Reward": mean_rewards[-1],
                 "Max Reward": max_rewards[-1],
