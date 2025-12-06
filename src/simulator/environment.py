@@ -40,15 +40,6 @@ DIST_AHEAD_MAX = 100
 
 # Randomized Arguments
 DELAY_TIME = 0.05  # s
-# STEER_OFFSET = 2 * (np.pi / 180)  # Steering offset (rad)
-# STEER_SLOP = 0.5 * (np.pi / (180))  # Variance in steering
-STEER_OFFSET = 0
-STEER_SLOP = 0
-# so far 2500 is best
-CORNERING_STIFFNESS = 3000  # N/rad
-MU_FRICTION = 0.9
-COURSE_SLOPE = 2 * (np.pi / 180)  # 1 degree constant slope assumed
-
 
 type rma_phase = Literal["phase_1", "phase_2"]
 
@@ -145,7 +136,7 @@ class BuggyCourseEnv(gym.Env):
         # ------------------------------------------------------
         maxlen = int(DELAY_TIME // self.dt)
         self.steer_queue = deque([0] * maxlen, maxlen=maxlen)
-        self.steer_noise = lambda: np.random.normal(loc=STEER_OFFSET, scale=STEER_SLOP)
+        self.steer_noise = lambda: np.random.normal(loc=self.steer_offset, scale=self.steer_slop)
 
         # Visualization
         self.fig = None
@@ -156,7 +147,7 @@ class BuggyCourseEnv(gym.Env):
         self.include_pos_in_obs = include_pos_in_obs
 
         # TODO - domain randomization needs to implement this for RMA to work
-        self.env_vector_size = 6
+        self.env_vector_size = 5
 
         if rma_config is not None:
             self.rma = True
@@ -433,17 +424,21 @@ class BuggyCourseEnv(gym.Env):
         self.sc = Buggy(
             e_utm=self.sc_init_state[0],
             n_utm=self.sc_init_state[1],
-            x_speed=3,
+            x_speed=5,
             y_speed=0,
             theta=self.sc_init_state[2],
             omega=0,
-            cornering_stiffness=CORNERING_STIFFNESS,
-            mu_friction=MU_FRICTION,
         )
 
         self.terminated = False
         self.prev_dist = 0.0
         self.step_count = 0
+
+        self.steer_offset = random.uniform(0, 5) * (np.pi / 180)  # Steering offset (rad)
+        self.steer_slop = random.uniform(0, 2) * (np.pi / (180))  # Variance in steering
+        self.cornering_stiffness = random.randint(2000, 3500)  # N/rad
+        self.mu_friction = random.uniform(0.65, 0.99)
+        self.course_slope = random.uniform(1, 3) * (np.pi / 180)  # 1 degree constant slope assumed
 
         if self.rma:
             self._init_rma()
@@ -462,7 +457,7 @@ class BuggyCourseEnv(gym.Env):
         """
         assert state.shape == (6,)
         assert control.shape == (1,)
-        assert constants.shape == (7,)
+        assert constants.shape == (5,)
 
         x_speed = state[2]
         y_speed = state[3]
@@ -475,8 +470,6 @@ class BuggyCourseEnv(gym.Env):
         angle_clip = constants[2]
         mass = constants[3]
         inertia = constants[4]
-        cornering_stiffness = constants[5]
-        mu_friction = constants[6]
 
         # Constants
         g = 9.81
@@ -488,21 +481,23 @@ class BuggyCourseEnv(gym.Env):
         )  # Static load per rear tire
 
         # Max force before slip (assuming no longitudinal force F_x)
-        F_cf_max = mu_friction * Fz_f
-        F_cr_max = mu_friction * Fz_r
+        F_cf_max = self.mu_friction * Fz_f
+        F_cr_max = self.mu_friction * Fz_r
 
         # much of the calculations for the intermediate values taken from here: https://www.cs.cmu.edu/afs/cs/Web/People/motionplanning/reading/PlanningforDynamicVeh-1.pdf
         # acceleration
-        a_downhill = g * np.sin(COURSE_SLOPE)  # m/s
-        # NOTE: this assumes the buggy always points exactly downhill (this isn't true but i don't want to think about course angles)
-        angle_downhill_x = 0
-        a_x = a_downhill * np.cos(angle_downhill_x)
+        a_downhill = g * np.sin(self.course_slope)  # m/s
+        # NOTE: this assumes "downhill" is straight west
+        angle_downhill_x = (theta % (2 * np.pi)) + np.pi
+        # capping backwards acceleration so buggy doesn't slow too much lol
+        a_x = max(a_downhill * np.cos(angle_downhill_x), -0.2)
+
         # slip angles
         alpha_f = np.arctan((y_speed + wheelbase_f * omega) / x_speed) - delta
         alpha_r = np.arctan((y_speed - wheelbase_r * omega) / x_speed)
         # longitudinal tire force
-        F_cf = -cornering_stiffness * alpha_f
-        F_cr = -cornering_stiffness * alpha_r
+        F_cf = -self.cornering_stiffness * alpha_f
+        F_cr = -self.cornering_stiffness * alpha_r
         # clip based on static friction (tire friction prevents spinning out)
         F_cf = np.clip(F_cf, -F_cf_max, F_cf_max)
         F_cr = np.clip(F_cr, -F_cr_max, F_cr_max)
@@ -636,11 +631,11 @@ class BuggyCourseEnv(gym.Env):
         return np.array(
             [
                 DELAY_TIME,
-                STEER_OFFSET,
-                STEER_SLOP,
-                CORNERING_STIFFNESS,
-                MU_FRICTION,
-                COURSE_SLOPE,
+                self.steer_offset,
+                self.steer_slop,
+                self.cornering_stiffness,
+                self.mu_friction,
+                self.course_slope,
             ],
             dtype=np.float32,
         )

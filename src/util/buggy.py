@@ -35,10 +35,6 @@ class Buggy:
     theta: float  # rad
     omega: float # rad/s
 
-    # Buggy Constants
-    cornering_stiffness: float
-    mu_friction: float  
-
     wheelbase_f: float = 1.104 / 2 # m
     wheelbase_r: float = 1.104 / 2# m
     angle_clip: float = np.pi / 9  # rad
@@ -55,7 +51,7 @@ class Buggy:
         return np.array([self.delta]).reshape(-1)
 
     def get_constants(self) -> np.ndarray:
-        return np.array([self.wheelbase_f, self.wheelbase_r, self.angle_clip, self.mass, self.inertia, self.cornering_stiffness, self.mu_friction]).reshape(-1)
+        return np.array([self.wheelbase_f, self.wheelbase_r, self.angle_clip, self.mass, self.inertia]).reshape(-1)
 
     def set_state(self, state: np.ndarray):
         assert state.shape == (6,)
