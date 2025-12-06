@@ -56,7 +56,7 @@ class TrainDagger:
         self.expert_policy = self.expert_policy.to(self.device)
 
         self.states = None
-        self.policy_states: Optional[RNNStates] = None
+        self.policy_states: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         self.actions = None
         self.episode_starts = None
         self.timesteps = None

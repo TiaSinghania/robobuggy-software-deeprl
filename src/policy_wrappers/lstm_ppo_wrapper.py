@@ -29,14 +29,28 @@ class LSTM_PPO_Wrapper(PolicyWrapper):
         # self.env = VecMonitor(self.env, self.dirpath + "/monitor.csv")
         self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
         self.policy: RecurrentPPO = RecurrentPPO(
-            "MlpLstmPolicy", self.env, verbose=1, device="cpu"
+            "MlpLstmPolicy",
+            self.env,
+            verbose=1,
+            device="cpu",
         )
         # self.policy.device = "cuda"
 
     def train(self, timesteps):
         # we have something called dirpath
         print("Training Reurrent PPO model...")
-        self.policy.learn(total_timesteps=timesteps)
+        for name, param in self.policy.policy.named_parameters():
+            if "policy_net" in name or "actor" in name or "action_net" in name:
+                param.requires_grad = False
+
+        self.policy.learn(total_timesteps=timesteps // 2)
+
+        for name, param in self.policy.policy.named_parameters():
+            if "policy_net" in name or "actor" in name or "action_net" in name:
+                param.requires_grad = True
+
+        self.policy.learn(total_timesteps=timesteps // 2)
+
         print("Training complete.")
 
         plot_results(

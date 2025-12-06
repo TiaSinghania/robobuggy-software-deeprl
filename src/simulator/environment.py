@@ -37,8 +37,8 @@ DIST_AHEAD_MAX = 100
 
 # Randomized Arguments
 DELAY_TIME = 0.05  # s
-STEER_OFFSET = 2 * (np.pi / 180)  # Steering offset (rad)
-STEER_SLOP = 0.5 * (np.pi / (180))  # Variance in steering (rad)
+STEER_OFFSET = 0 * (np.pi / 180)  # Steering offset (rad)
+STEER_SLOP = 0 * (np.pi / (180))  # Variance in steering (rad)
 
 
 class BuggyCourseEnv(gym.Env):
