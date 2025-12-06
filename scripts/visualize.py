@@ -13,19 +13,46 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 
 sys.path.append("scripts")
 
-from src.simulator.environment import BuggyCourseEnv
+from src.simulator.environment import BuggyCourseEnv, RMAConfig, rma_phase
 
 
-def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""):
-    """Run the buggy environment with visualization using env.render()."""
-    env = BuggyCourseEnv(
-        rate=20, render_every_n_steps=render_every_n_steps, include_pos_in_obs=True
-    )
+def visualize_environment(
+    policy: BaseAlgorithm,
+    render_every_n_steps=10,
+    dir="",
+    rma_phase: rma_phase = None,
+    include_pos_in_obs: bool = True,
+):
+    """Run the buggy environment with visualization using env.render().
+
+    Args:
+        policy: The trained policy to visualize
+        render_every_n_steps: Render every N steps (lower = smoother but slower)
+        dir: Directory to save the output video
+        rma_phase: RMA phase ("phase_1" or "phase_2") if using RMA policy, None otherwise
+        include_pos_in_obs: Whether position is included in observations
+    """
+    env_kwargs = {
+        "rate": 20,
+        "render_every_n_steps": render_every_n_steps,
+        "include_pos_in_obs": include_pos_in_obs,
+    }
+
+    # Add RMA config if this is an RMA policy
+    if rma_phase is not None:
+        env_kwargs["rma_config"] = RMAConfig(
+            lookback_steps=50,
+            current_phase=rma_phase,
+        )
+
+    env = BuggyCourseEnv(**env_kwargs)
     env.render()
 
     metadata = dict(title="Buggy Simulation", artist="tia")
 
-    writer = FFMpegWriter(fps=int(1 / (env.dt * render_every_n_steps)), metadata=metadata)
+    writer = FFMpegWriter(
+        fps=int(1 / (env.dt * render_every_n_steps)), metadata=metadata
+    )
 
     os.makedirs(dir, exist_ok=True)
 

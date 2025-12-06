@@ -2,7 +2,6 @@
 Gymansium Environment API
 Check the documentation: https://gymnasium.farama.org/introduction/create_custom_env/
 
-TODO: https://gymnasium.farama.org/introduction/create_custom_env/#using-wrappers
 Can create multiple similar environments!!!
 
 Controls two buggies:
@@ -11,7 +10,8 @@ SC - (policy controlled) : Buggy
 
 """
 
-from typing import Optional
+from dataclasses import dataclass
+from typing import Literal, Optional
 
 import gymnasium as gym
 import matplotlib.pyplot as plt
@@ -21,6 +21,9 @@ import random
 from gymnasium.envs.registration import register
 from scipy.spatial import cKDTree
 from collections import deque
+
+import torch.nn as nn
+import torch
 
 from src.controller.stanley_controller import StanleyController
 from src.util.buggy import Buggy
@@ -47,6 +50,18 @@ MU_FRICTION = 0.9
 COURSE_SLOPE = 2 * (np.pi / 180)  # 1 degree constant slope assumed
 
 
+type rma_phase = Literal["phase_1", "phase_2"]
+
+
+@dataclass
+class RMAConfig:
+    # rma_rate: int = 10
+    lookback_steps: int = 50  # used for phase 2 output
+    # Phase 1 trains the env factor encoder and the policy
+    # Phase 2 trains the adaptation module
+    current_phase: rma_phase = "phase_1"
+
+
 class BuggyCourseEnv(gym.Env):
     def __init__(
         self,
@@ -57,6 +72,7 @@ class BuggyCourseEnv(gym.Env):
         right_curb_path: str = "src/util/right_curb.json",
         render_every_n_steps: int = 5,
         include_pos_in_obs: bool = True,
+        rma_config: Optional[RMAConfig] = None,
     ):
         """
         Initialize a Buggy Course Environmnet.
@@ -64,7 +80,7 @@ class BuggyCourseEnv(gym.Env):
         Arguments:
         rate (Hz) - Simulation Rate
         steer_scale - Scale action space to full steering range
-
+        rma_config - RMA configuration (use None for no RMA)
         """
         # Positions
         self.sc_init_state = (
@@ -115,7 +131,8 @@ class BuggyCourseEnv(gym.Env):
             target_traj_idx
         )
 
-        self.obs_size = OBS_SIZE if include_pos_in_obs else OBS_SIZE - 2
+        self.base_obs_size = OBS_SIZE if include_pos_in_obs else OBS_SIZE - 2
+        self.obs_size = self.base_obs_size
 
         self.observation_space = gym.spaces.Box(
             low=np.ones((self.obs_size,), dtype=np.float32) * -float("inf"),
@@ -123,6 +140,7 @@ class BuggyCourseEnv(gym.Env):
             shape=(self.obs_size,),
         )
         self.action_space = gym.spaces.Box(low=-1.0, high=1)
+        self.action_size = 1
 
         # ------------------------------------------------------
         maxlen = int(DELAY_TIME // self.dt)
@@ -136,7 +154,88 @@ class BuggyCourseEnv(gym.Env):
         self.window_closed = False
         self.curb_positions = None
         self.include_pos_in_obs = include_pos_in_obs
+
+        # TODO - domain randomization needs to implement this for RMA to work
+        self.env_vector_size = 6
+
+        if rma_config is not None:
+            self.rma = True
+            self.rma_config = rma_config
+            self._init_rma()
+        else:
+            self.rma = False
+
         self.reset()  # Sets up the buggies
+
+    def _init_rma(self) -> None:
+        self.rma_lookback_steps = self.rma_config.lookback_steps
+        self.rma_current_phase: rma_phase = self.rma_config.current_phase
+
+        # buffer of previous state action pairs for phase 2
+        self.rma_buffer = deque(maxlen=self.rma_lookback_steps)
+        for _ in range(self.rma_lookback_steps):
+            self.rma_buffer.append(
+                np.zeros((self.base_obs_size + self.action_size,), dtype=np.float32)
+            )
+
+        self._update_observation_space_for_phase()
+
+    def _update_observation_space_for_phase(self) -> None:
+        """Update observation space based on current RMA phase."""
+        if self.rma_current_phase == "phase_1":
+            # update obs_size and observation_space
+            self.obs_size = self.base_obs_size + self.env_vector_size
+            self.observation_space = gym.spaces.Box(
+                low=np.ones((self.obs_size,), dtype=np.float32) * -float("inf"),
+                high=np.ones((self.obs_size,), dtype=np.float32) * float("inf"),
+                shape=(self.obs_size,),
+            )
+
+        elif self.rma_current_phase == "phase_2":
+            self.obs_size = self.base_obs_size + self.rma_lookback_steps * (
+                self.base_obs_size + self.action_size
+            )
+            self.observation_space = gym.spaces.Box(
+                low=np.ones((self.obs_size,), dtype=np.float32) * -float("inf"),
+                high=np.ones((self.obs_size,), dtype=np.float32) * float("inf"),
+                shape=(self.obs_size,),
+            )
+
+    def set_rma_phase(self, phase: rma_phase) -> None:
+        """
+        Switch the RMA phase without recreating the environment.
+
+        This allows transitioning from Phase 1 (encoder training) to Phase 2
+        (adaptation module training) without needing to recreate SubprocVecEnv workers.
+
+        Args:
+            phase: The RMA phase to switch to ("phase_1" or "phase_2")
+
+        Raises:
+            RuntimeError: If RMA is not enabled for this environment
+        """
+        if not self.rma:
+            raise RuntimeError(
+                "Cannot set RMA phase: RMA is not enabled for this environment"
+            )
+
+        if phase not in ("phase_1", "phase_2"):
+            raise ValueError(f"Invalid phase: {phase}. Must be 'phase_1' or 'phase_2'")
+
+        self.rma_current_phase = phase
+        self.rma_config.current_phase = phase
+        self._update_observation_space_for_phase()
+
+        # Reset the buffer when switching phases
+        self.rma_buffer.clear()
+        for _ in range(self.rma_lookback_steps):
+            self.rma_buffer.append(
+                np.zeros((self.base_obs_size + self.action_size,), dtype=np.float32)
+            )
+
+    def get_observation_space(self) -> gym.spaces.Box:
+        """Return the current observation space (for syncing with VecEnv wrappers)."""
+        return self.observation_space
 
     def _get_privileged_obs(self) -> np.ndarray:
         sc_x, sc_y = self.sc.e_utm, self.sc.n_utm
@@ -267,7 +366,7 @@ class BuggyCourseEnv(gym.Env):
 
         return float("inf"), None, 0.0, False
 
-    def _get_obs(self) -> np.ndarray:
+    def _get_obs(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Observation Space:
 
@@ -286,19 +385,36 @@ class BuggyCourseEnv(gym.Env):
         """
 
         if self.include_pos_in_obs:
-            return np.concatenate(
+            obs = np.concatenate(
                 [
                     self.sc.get_full_obs(),
                     self._get_privileged_obs(),
                 ]
             )
         else:
-            return np.concatenate(
+            obs = np.concatenate(
                 [
                     self.sc.get_no_pos_obs(),
                     self._get_privileged_obs(),
                 ]
             )
+
+        if self.rma:
+            match self.rma_current_phase:
+                case "phase_1":
+                    # in phase 1, we need to include env domain hyperparams
+                    env_hyperparams = self._get_env_hyperparams()
+                    rma_obs = np.concatenate([obs, env_hyperparams], dtype=np.float32)
+                case "phase_2":
+                    # in phase 2, we need to include the k previous state action pairs
+                    rma_buffer = np.array(
+                        list(self.rma_buffer), dtype=np.float32
+                    ).flatten()
+                    rma_obs = np.concatenate([obs, rma_buffer], dtype=np.float32)
+        else:
+            rma_obs = obs
+
+        return obs, rma_obs
 
     def _get_info(self) -> dict:
         """
@@ -329,9 +445,12 @@ class BuggyCourseEnv(gym.Env):
         self.prev_dist = 0.0
         self.step_count = 0
 
-        obs = self._get_obs()
+        if self.rma:
+            self._init_rma()
 
-        return obs, self._get_info()
+        obs, rma_obs = self._get_obs()
+
+        return rma_obs, self._get_info()
 
     def _dynamics(self, state: np.ndarray, control: np.ndarray, constants: np.ndarray):
         """
@@ -418,12 +537,12 @@ class BuggyCourseEnv(gym.Env):
         k4 = self._dynamics(state + k3 * dt, control, constants)
 
         new_state = state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
-        print(
-            "NEXT STATE ",
-            ["{:.{}f}".format(num, 3) for num in new_state],
-            " DELTA ",
-            control[0],
-        )
+        # print(
+        #     "NEXT STATE ",
+        #     ["{:.{}f}".format(num, 3) for num in new_state],
+        #     " DELTA ",
+        #     control[0],
+        # )
         buggy.set_state(new_state)
 
     def _get_reward(self) -> float:
@@ -504,7 +623,27 @@ class BuggyCourseEnv(gym.Env):
         # Simple environment doesn't have max step limit
         truncated = False
 
-        return self._get_obs(), reward, self.terminated, truncated, self._get_info()
+        obs, rma_obs = self._get_obs()
+
+        if self.rma:
+            self.rma_buffer.append(np.concatenate([obs, sc_steering_percentage]))
+
+        return rma_obs, reward, self.terminated, truncated, self._get_info()
+
+    def _get_env_hyperparams(self) -> np.ndarray:
+        # TODO include current domain randomization state
+        # TODO - returns vector of size self.env_vector_size
+        return np.array(
+            [
+                DELAY_TIME,
+                STEER_OFFSET,
+                STEER_SLOP,
+                CORNERING_STIFFNESS,
+                MU_FRICTION,
+                COURSE_SLOPE,
+            ],
+            dtype=np.float32,
+        )
 
     def _on_close(self, event):
         """Handle window close event."""
