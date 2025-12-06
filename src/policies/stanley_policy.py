@@ -10,8 +10,8 @@ from src.util.trajectory import Trajectory
 class StanleyPolicy(policies.BasePolicy):
     CROSS_TRACK_GAIN = 1.3
     K_SOFT = 1.0  # m/s
-    K_D_YAW = 0.012  # rad / (rad/s)
-    WHEELBASE = 1.104/2
+    K_D_YAW = 0.05  # rad / (rad/s) higher value prevents spin outs
+    WHEELBASE = 1.104 / 2
 
     def __init__(self, venv, reference_traj_path: str, **kwargs) -> None:
         super().__init__(
@@ -65,9 +65,9 @@ class StanleyPolicy(policies.BasePolicy):
         y1 = closest_position[1]
         x2 = next_position[0]
         y2 = next_position[1]
-        error_dist = -((front_x - x1) * (y2 - y1) - (front_y - y1) * (x2 - x1)) / np.sqrt(
-            (y2 - y1) ** 2 + (x2 - x1) ** 2
-        )
+        error_dist = -(
+            (front_x - x1) * (y2 - y1) - (front_y - y1) * (x2 - x1)
+        ) / np.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2)
 
         yaw_damping_term = self.K_D_YAW * omega
 

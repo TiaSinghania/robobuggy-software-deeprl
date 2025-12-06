@@ -27,8 +27,6 @@ from src.util.buggy import Buggy
 from src.util.trajectory import Trajectory
 
 
-
-
 UTM_EAST_ZERO = 589761.40
 UTM_NORTH_ZERO = 4477321.07
 
@@ -44,9 +42,9 @@ DELAY_TIME = 0.05  # s
 STEER_OFFSET = 0
 STEER_SLOP = 0
 # so far 2500 is best
-CORNERING_STIFFNESS = 2500 # N/rad
-MU_FRICTION = 0.7
-COURSE_SLOPE = 2 * (np.pi / 180) # 5 degree constant slope assumed
+CORNERING_STIFFNESS = 3000  # N/rad
+MU_FRICTION = 0.9
+COURSE_SLOPE = 2 * (np.pi / 180)  # 1 degree constant slope assumed
 
 
 class BuggyCourseEnv(gym.Env):
@@ -128,9 +126,7 @@ class BuggyCourseEnv(gym.Env):
 
         # ------------------------------------------------------
         maxlen = int(DELAY_TIME // self.dt)
-        self.steer_queue = deque(
-            [0] * maxlen, maxlen=maxlen
-        )
+        self.steer_queue = deque([0] * maxlen, maxlen=maxlen)
         self.steer_noise = lambda: np.random.normal(loc=STEER_OFFSET, scale=STEER_SLOP)
 
         # Visualization
@@ -365,8 +361,12 @@ class BuggyCourseEnv(gym.Env):
 
         # Constants
         g = 9.81
-        Fz_f = mass * g * (wheelbase_r / (wheelbase_f + wheelbase_r)) # Static load per front tire
-        Fz_r = mass * g * (wheelbase_f / (wheelbase_f + wheelbase_r)) # Static load per rear tire
+        Fz_f = (
+            mass * g * (wheelbase_r / (wheelbase_f + wheelbase_r))
+        )  # Static load per front tire
+        Fz_r = (
+            mass * g * (wheelbase_f / (wheelbase_f + wheelbase_r))
+        )  # Static load per rear tire
 
         # Max force before slip (assuming no longitudinal force F_x)
         F_cf_max = mu_friction * Fz_f
@@ -374,34 +374,32 @@ class BuggyCourseEnv(gym.Env):
 
         # much of the calculations for the intermediate values taken from here: https://www.cs.cmu.edu/afs/cs/Web/People/motionplanning/reading/PlanningforDynamicVeh-1.pdf
         # acceleration
-        a_downhill = g * np.sin(COURSE_SLOPE) # m/s
+        a_downhill = g * np.sin(COURSE_SLOPE)  # m/s
         # NOTE: this assumes the buggy always points exactly downhill (this isn't true but i don't want to think about course angles)
         angle_downhill_x = 0
         a_x = a_downhill * np.cos(angle_downhill_x)
         # slip angles
-        alpha_f = np.arctan(y_speed + wheelbase_f * omega/x_speed) - delta
-        alpha_r = np.arctan(y_speed - wheelbase_r * omega/x_speed)
+        alpha_f = np.arctan((y_speed + wheelbase_f * omega) / x_speed) - delta
+        alpha_r = np.arctan((y_speed - wheelbase_r * omega) / x_speed)
         # longitudinal tire force
         F_cf = -cornering_stiffness * alpha_f
         F_cr = -cornering_stiffness * alpha_r
         # clip based on static friction (tire friction prevents spinning out)
         F_cf = np.clip(F_cf, -F_cf_max, F_cf_max)
-        F_cr = np.clip(F_cr, -F_cr_max, F_cr_max)    
+        F_cr = np.clip(F_cr, -F_cr_max, F_cr_max)
         # derivatives of easting, northing, x_speed, y_speed, theta, omega
-        # taken from this paper: https://nuhuo08.github.io/control/IV_KinematicMPC_jason.pdf 
+        # taken from this paper: https://nuhuo08.github.io/control/IV_KinematicMPC_jason.pdf
         return np.array(
             [
-                # 
+                #
                 x_speed * np.cos(theta) - y_speed * np.sin(theta),
                 x_speed * np.sin(theta) + y_speed * np.cos(theta),
                 omega * y_speed + a_x,
-                -omega * x_speed + 2/mass * (F_cf * np.cos(delta) + F_cr),
+                -omega * x_speed + 2 / mass * (F_cf * np.cos(delta) + F_cr),
                 omega,
-                2/inertia * (wheelbase_f * F_cf * np.cos(delta)- wheelbase_r * F_cr),
+                2 / inertia * (wheelbase_f * F_cf * np.cos(delta) - wheelbase_r * F_cr),
             ],
             dtype=np.float32,
-
-            
         )
 
     def _update_buggy(self, buggy: Buggy, dt: float) -> None:
@@ -420,7 +418,12 @@ class BuggyCourseEnv(gym.Env):
         k4 = self._dynamics(state + k3 * dt, control, constants)
 
         new_state = state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
-        print("NEXT STATE ", ["{:.{}f}".format(num, 3) for num in new_state], " DELTA ", control[0])
+        print(
+            "NEXT STATE ",
+            ["{:.{}f}".format(num, 3) for num in new_state],
+            " DELTA ",
+            control[0],
+        )
         buggy.set_state(new_state)
 
     def _get_reward(self) -> float:
