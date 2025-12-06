@@ -17,6 +17,7 @@ import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import random
 from gymnasium.envs.registration import register
 from scipy.spatial import cKDTree
 from collections import deque
@@ -25,20 +26,25 @@ from src.controller.stanley_controller import StanleyController
 from src.util.buggy import Buggy
 from src.util.trajectory import Trajectory
 
-SC_WHEELBASE = 1.104
 
 UTM_EAST_ZERO = 589761.40
 UTM_NORTH_ZERO = 4477321.07
 
-OBS_SIZE = 9
+OBS_SIZE = 11
 
 DIST_AHEAD_MAX = 100
 
 
 # Randomized Arguments
 DELAY_TIME = 0.05  # s
-STEER_OFFSET = 2 * (np.pi / 180)  # Steering offset (rad)
-STEER_SLOP = 0.5 * (np.pi / (180))  # Variance in steering (rad)
+# STEER_OFFSET = 2 * (np.pi / 180)  # Steering offset (rad)
+# STEER_SLOP = 0.5 * (np.pi / (180))  # Variance in steering
+STEER_OFFSET = 0
+STEER_SLOP = 0
+# so far 2500 is best
+CORNERING_STIFFNESS = 3000  # N/rad
+MU_FRICTION = 0.9
+COURSE_SLOPE = 2 * (np.pi / 180)  # 1 degree constant slope assumed
 
 
 class BuggyCourseEnv(gym.Env):
@@ -119,10 +125,8 @@ class BuggyCourseEnv(gym.Env):
         self.action_space = gym.spaces.Box(low=-1.0, high=1)
 
         # ------------------------------------------------------
-
-        self.steer_queue = deque(
-            [0] * int(DELAY_TIME // self.dt), maxlen=int(DELAY_TIME // self.dt)
-        )
+        maxlen = int(DELAY_TIME // self.dt)
+        self.steer_queue = deque([0] * maxlen, maxlen=maxlen)
         self.steer_noise = lambda: np.random.normal(loc=STEER_OFFSET, scale=STEER_SLOP)
 
         # Visualization
@@ -270,9 +274,12 @@ class BuggyCourseEnv(gym.Env):
         SC:
             - easting
             - northing
-            - speed
+            - x speed
+            - y speed
             - theta
+            - omega
             - delta
+
 
         PRIVILEGED:
             - distance from center
@@ -310,9 +317,12 @@ class BuggyCourseEnv(gym.Env):
         self.sc = Buggy(
             e_utm=self.sc_init_state[0],
             n_utm=self.sc_init_state[1],
-            speed=12,
+            x_speed=3,
+            y_speed=0,
             theta=self.sc_init_state[2],
-            wheelbase=SC_WHEELBASE,
+            omega=0,
+            cornering_stiffness=CORNERING_STIFFNESS,
+            mu_friction=MU_FRICTION,
         )
 
         self.terminated = False
@@ -331,21 +341,63 @@ class BuggyCourseEnv(gym.Env):
         control - Buggy Control
         constants - Buggy Constants
         """
-        assert state.shape == (4,)
+        assert state.shape == (6,)
         assert control.shape == (1,)
-        assert constants.shape == (2,)
+        assert constants.shape == (7,)
 
-        speed = state[2]
-        theta = state[3]
+        x_speed = state[2]
+        y_speed = state[3]
+        theta = state[4]
+        omega = state[5]
         delta = control[0]
-        wheelbase = constants[0]
 
+        wheelbase_f = constants[0]
+        wheelbase_r = constants[1]
+        angle_clip = constants[2]
+        mass = constants[3]
+        inertia = constants[4]
+        cornering_stiffness = constants[5]
+        mu_friction = constants[6]
+
+        # Constants
+        g = 9.81
+        Fz_f = (
+            mass * g * (wheelbase_r / (wheelbase_f + wheelbase_r))
+        )  # Static load per front tire
+        Fz_r = (
+            mass * g * (wheelbase_f / (wheelbase_f + wheelbase_r))
+        )  # Static load per rear tire
+
+        # Max force before slip (assuming no longitudinal force F_x)
+        F_cf_max = mu_friction * Fz_f
+        F_cr_max = mu_friction * Fz_r
+
+        # much of the calculations for the intermediate values taken from here: https://www.cs.cmu.edu/afs/cs/Web/People/motionplanning/reading/PlanningforDynamicVeh-1.pdf
+        # acceleration
+        a_downhill = g * np.sin(COURSE_SLOPE)  # m/s
+        # NOTE: this assumes the buggy always points exactly downhill (this isn't true but i don't want to think about course angles)
+        angle_downhill_x = 0
+        a_x = a_downhill * np.cos(angle_downhill_x)
+        # slip angles
+        alpha_f = np.arctan((y_speed + wheelbase_f * omega) / x_speed) - delta
+        alpha_r = np.arctan((y_speed - wheelbase_r * omega) / x_speed)
+        # longitudinal tire force
+        F_cf = -cornering_stiffness * alpha_f
+        F_cr = -cornering_stiffness * alpha_r
+        # clip based on static friction (tire friction prevents spinning out)
+        F_cf = np.clip(F_cf, -F_cf_max, F_cf_max)
+        F_cr = np.clip(F_cr, -F_cr_max, F_cr_max)
+        # derivatives of easting, northing, x_speed, y_speed, theta, omega
+        # taken from this paper: https://nuhuo08.github.io/control/IV_KinematicMPC_jason.pdf
         return np.array(
             [
-                speed * np.cos(theta),
-                speed * np.sin(theta),
-                0.0,
-                speed / wheelbase * np.tan(delta),
+                #
+                x_speed * np.cos(theta) - y_speed * np.sin(theta),
+                x_speed * np.sin(theta) + y_speed * np.cos(theta),
+                omega * y_speed + a_x,
+                -omega * x_speed + 2 / mass * (F_cf * np.cos(delta) + F_cr),
+                omega,
+                2 / inertia * (wheelbase_f * F_cf * np.cos(delta) - wheelbase_r * F_cr),
             ],
             dtype=np.float32,
         )
@@ -365,7 +417,14 @@ class BuggyCourseEnv(gym.Env):
         k3 = self._dynamics(state + k2 * dt / 2, control, constants)
         k4 = self._dynamics(state + k3 * dt, control, constants)
 
-        buggy.set_state(state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6)
+        new_state = state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+        print(
+            "NEXT STATE ",
+            ["{:.{}f}".format(num, 3) for num in new_state],
+            " DELTA ",
+            control[0],
+        )
+        buggy.set_state(new_state)
 
     def _get_reward(self) -> float:
         """
@@ -525,7 +584,7 @@ class BuggyCourseEnv(gym.Env):
             self.sc.n_utm,
             "bo",
             markersize=6,
-            label=f"SC Buggy (Policy) - Speed: {self.sc.speed:.1f} m/s - Steering {np.rad2deg(self.sc.delta):.1f}°",
+            label=f"SC Buggy (Policy) - Speed: {self.sc.x_speed:.1f} m/s - Steering {np.rad2deg(self.sc.delta):.1f}°",
         )
         # Draw heading arrow for SC
         arrow_length = 8

@@ -23,9 +23,9 @@ def visualize_environment(policy: BaseAlgorithm, render_every_n_steps=10, dir=""
     )
     env.render()
 
-    metadata = dict(title="Buggy Simulation", artist="Mehul Goel")
+    metadata = dict(title="Buggy Simulation", artist="tia")
 
-    writer = FFMpegWriter(fps=int(0.1 / env.dt), metadata=metadata)
+    writer = FFMpegWriter(fps=int(1 / (env.dt * render_every_n_steps)), metadata=metadata)
 
     os.makedirs(dir, exist_ok=True)
 
