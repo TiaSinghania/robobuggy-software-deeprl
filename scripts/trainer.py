@@ -141,9 +141,21 @@ def main():
             policy=policy_wrapper.policy, n_rollouts=args.heatmap_paths, dir=dirpath
         )
     else:
-        visualize_environment(
-            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=1
-        )
+        if args.policy == "rma":
+            # RMA needs matching environment config
+            # Use phase_2 if trained, otherwise phase_1
+            phase = "phase_2" if args.phase2_timesteps > 0 else "phase_1"
+            visualize_environment(
+                policy=policy_wrapper.policy,
+                dir=dirpath,
+                render_every_n_steps=1,
+                rma_phase=phase,
+                include_pos_in_obs=False,
+            )
+        else:
+            visualize_environment(
+                policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=1
+            )
 
 
 if __name__ == "__main__":

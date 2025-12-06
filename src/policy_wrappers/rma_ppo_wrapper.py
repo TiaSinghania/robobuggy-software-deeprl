@@ -58,14 +58,14 @@ class RMA_PPO_Wrapper(PolicyWrapper):
         # base_obs_size is the observation size without RMA appendage
         # For include_pos_in_obs=False: 7 (3 state + 4 privileged)
         # For include_pos_in_obs=True: 9 (5 state + 4 privileged)
-        self.base_obs_size = 9 if include_pos_in_obs else 7
+        self.base_obs_size = 11 if include_pos_in_obs else 9
         self.action_size = 1
         self.state_action_size = self.base_obs_size + self.action_size
 
         # Get env_vector_size from the environment
         # TODO: This should be retrieved from the actual environment once domain randomization is implemented
         self.env_vector_size = (
-            0  # Placeholder until domain randomization is implemented
+            6  # Placeholder until domain randomization is implemented
         )
 
         # Current phase tracking

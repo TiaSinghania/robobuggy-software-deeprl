@@ -60,6 +60,13 @@ class RMAExtractor(BaseFeaturesExtractor):
         # layer are [32, 32, 8, 4], [32, 32, 5, 1], [32, 32, 5, 1]. The flattened
         # CNN output is linearly projected to estimate ˆzt
         num_channels = adaptation_embedding_dim
+
+        seq_len = lookback_steps
+        seq_len = (seq_len - 8) // 4 + 1  # after conv1
+        seq_len = seq_len - 4  # after conv2
+        seq_len = seq_len - 4  # after conv3
+        flattened_size = num_channels * seq_len
+
         # takes in [batch, size, seqs] and outputs [batch, embedding_dim]
         self.output_cnns = nn.Sequential(
             nn.Conv1d(num_channels, num_channels, kernel_size=8, stride=4),
@@ -69,7 +76,7 @@ class RMAExtractor(BaseFeaturesExtractor):
             nn.Conv1d(num_channels, num_channels, kernel_size=5, stride=1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.LazyLinear(embedding_dim),  # project to embedding_dim
+            nn.Linear(flattened_size, embedding_dim),  # project to embedding_dim
             nn.Tanh(),
         )
 

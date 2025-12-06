@@ -2,7 +2,6 @@
 Gymansium Environment API
 Check the documentation: https://gymnasium.farama.org/introduction/create_custom_env/
 
-TODO: https://gymnasium.farama.org/introduction/create_custom_env/#using-wrappers
 Can create multiple similar environments!!!
 
 Controls two buggies:
@@ -157,7 +156,7 @@ class BuggyCourseEnv(gym.Env):
         self.include_pos_in_obs = include_pos_in_obs
 
         # TODO - domain randomization needs to implement this for RMA to work
-        self.env_vector_size = 0
+        self.env_vector_size = 6
 
         if rma_config is not None:
             self.rma = True
@@ -175,7 +174,9 @@ class BuggyCourseEnv(gym.Env):
         # buffer of previous state action pairs for phase 2
         self.rma_buffer = deque(maxlen=self.rma_lookback_steps)
         for _ in range(self.rma_lookback_steps):
-            self.rma_buffer.append(np.zeros((self.base_obs_size + self.action_size,)))
+            self.rma_buffer.append(
+                np.zeros((self.base_obs_size + self.action_size,), dtype=np.float32)
+            )
 
         self._update_observation_space_for_phase()
 
@@ -228,7 +229,9 @@ class BuggyCourseEnv(gym.Env):
         # Reset the buffer when switching phases
         self.rma_buffer.clear()
         for _ in range(self.rma_lookback_steps):
-            self.rma_buffer.append(np.zeros((self.base_obs_size + self.action_size,)))
+            self.rma_buffer.append(
+                np.zeros((self.base_obs_size + self.action_size,), dtype=np.float32)
+            )
 
     def get_observation_space(self) -> gym.spaces.Box:
         """Return the current observation space (for syncing with VecEnv wrappers)."""
@@ -401,11 +404,13 @@ class BuggyCourseEnv(gym.Env):
                 case "phase_1":
                     # in phase 1, we need to include env domain hyperparams
                     env_hyperparams = self._get_env_hyperparams()
-                    rma_obs = np.concatenate([obs, env_hyperparams])
+                    rma_obs = np.concatenate([obs, env_hyperparams], dtype=np.float32)
                 case "phase_2":
                     # in phase 2, we need to include the k previous state action pairs
-                    rma_buffer = np.array(list(self.rma_buffer)).flatten()
-                    rma_obs = np.concatenate([obs, rma_buffer])
+                    rma_buffer = np.array(
+                        list(self.rma_buffer), dtype=np.float32
+                    ).flatten()
+                    rma_obs = np.concatenate([obs, rma_buffer], dtype=np.float32)
         else:
             rma_obs = obs
 
@@ -532,12 +537,12 @@ class BuggyCourseEnv(gym.Env):
         k4 = self._dynamics(state + k3 * dt, control, constants)
 
         new_state = state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
-        print(
-            "NEXT STATE ",
-            ["{:.{}f}".format(num, 3) for num in new_state],
-            " DELTA ",
-            control[0],
-        )
+        # print(
+        #     "NEXT STATE ",
+        #     ["{:.{}f}".format(num, 3) for num in new_state],
+        #     " DELTA ",
+        #     control[0],
+        # )
         buggy.set_state(new_state)
 
     def _get_reward(self) -> float:
@@ -628,7 +633,17 @@ class BuggyCourseEnv(gym.Env):
     def _get_env_hyperparams(self) -> np.ndarray:
         # TODO include current domain randomization state
         # TODO - returns vector of size self.env_vector_size
-        raise NotImplementedError("Domain randomization not implemented")
+        return np.array(
+            [
+                DELAY_TIME,
+                STEER_OFFSET,
+                STEER_SLOP,
+                CORNERING_STIFFNESS,
+                MU_FRICTION,
+                COURSE_SLOPE,
+            ],
+            dtype=np.float32,
+        )
 
     def _on_close(self, event):
         """Handle window close event."""
