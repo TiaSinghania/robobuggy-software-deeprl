@@ -16,3 +16,7 @@ tk
 empy==3.3.4
 catkin_pkg
 lark
+gymnasium
+stable_baselines3
+imitation
+
