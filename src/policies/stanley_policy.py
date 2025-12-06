@@ -10,8 +10,8 @@ from src.util.trajectory import Trajectory
 class StanleyPolicy(policies.BasePolicy):
     CROSS_TRACK_GAIN = 1.3
     K_SOFT = 1.0  # m/s
-    K_D_YAW = 0.012  # rad / (rad/s)
-    WHEELBASE = 1.104
+    K_D_YAW = 0.05  # rad / (rad/s) higher value prevents spin outs
+    WHEELBASE = 1.104 / 2
 
     def __init__(self, venv, reference_traj_path: str, **kwargs) -> None:
         super().__init__(
@@ -29,11 +29,12 @@ class StanleyPolicy(policies.BasePolicy):
         assert isinstance(observation, torch.Tensor)
         assert observation.ndim == 2 and observation.shape == (
             1,
-            9,
+            11,
         ), f"Dimensions {observation.ndim}, Shape {observation.shape}"
 
         current_speed = observation[0, 2].item()
-        heading = observation[0, 3].item()
+        heading = observation[0, 4].item()
+        omega = observation[0, 5].item()
         x, y = observation[0, 0].item(), observation[0, 1].item()  # (Easting, Northing)
 
         front_x = x + self.WHEELBASE * np.cos(heading)
@@ -64,9 +65,11 @@ class StanleyPolicy(policies.BasePolicy):
         y1 = closest_position[1]
         x2 = next_position[0]
         y2 = next_position[1]
-        error_dist = -((x - x1) * (y2 - y1) - (y - y1) * (x2 - x1)) / np.sqrt(
-            (y2 - y1) ** 2 + (x2 - x1) ** 2
-        )
+        error_dist = -(
+            (front_x - x1) * (y2 - y1) - (front_y - y1) * (x2 - x1)
+        ) / np.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2)
+
+        yaw_damping_term = self.K_D_YAW * omega
 
         cross_track_component = -np.arctan2(
             self.CROSS_TRACK_GAIN * error_dist,
@@ -74,7 +77,7 @@ class StanleyPolicy(policies.BasePolicy):
         )
 
         # Determine steering_command
-        steering_cmd = error_heading + cross_track_component
+        steering_cmd = error_heading + cross_track_component - yaw_damping_term
         steering_cmd = np.clip(steering_cmd, -np.pi / 9, np.pi / 9) / (np.pi / 9)
 
         return torch.Tensor(steering_cmd, device=observation.device)
