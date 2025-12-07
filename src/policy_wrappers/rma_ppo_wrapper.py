@@ -172,6 +172,22 @@ class RMA_PPO_Wrapper(PolicyWrapper):
         )
 
         print("Phase 1 initialized: Training encoder + policy")
+        self._move_rma_to_device()
+
+    def _move_rma_to_device(self):
+        extractor = self.policy.policy.features_extractor
+        if isinstance(extractor, RMAExtractor):
+            # The extractor stores its desired device in self.device (default "cuda")
+            target_device = extractor.device
+
+            # If the extractor wants to be on a different device than PPO (e.g. Extractor=CUDA, PPO=CPU)
+            if target_device != self.device:
+                print(
+                    f"  Restoring RMA components to {target_device} (PPO is on {self.device})"
+                )
+                extractor.to(target_device)
+        else:
+            print(f"  RMAExtractor not found in policy")
 
     def _transition_to_phase2(self):
         """
@@ -206,6 +222,8 @@ class RMA_PPO_Wrapper(PolicyWrapper):
             device=self.device,
             policy_kwargs=policy_kwargs,
         )
+
+        self._move_rma_to_device()
 
         # 4. Transfer weights from Phase 1
         phase2_extractor = self.policy.policy.features_extractor
@@ -348,8 +366,8 @@ class RMA_PPO_Wrapper(PolicyWrapper):
 
         # Compute initial loss before training
         with torch.no_grad():
-            sample_hist = history[:batch_size].to(self.device)
-            sample_params = env_params[:batch_size].to(self.device)
+            sample_hist = history[:batch_size]
+            sample_params = env_params[:batch_size]
             z_true_init = extractor.forward_encoder(sample_params)
             z_pred_init = extractor.forward_adaptation(sample_hist)
             initial_loss = criterion(z_pred_init, z_true_init).item()
@@ -364,8 +382,6 @@ class RMA_PPO_Wrapper(PolicyWrapper):
             total_loss = 0
             num_batches = 0
             for batch_hist, batch_params in dataloader:
-                batch_hist = batch_hist.to(self.device)
-                batch_params = batch_params.to(self.device)
 
                 optimizer.zero_grad()
 
@@ -395,8 +411,8 @@ class RMA_PPO_Wrapper(PolicyWrapper):
         # Final evaluation
         extractor.eval()
         with torch.no_grad():
-            sample_hist = history[:batch_size].to(self.device)
-            sample_params = env_params[:batch_size].to(self.device)
+            sample_hist = history[:batch_size]
+            sample_params = env_params[:batch_size]
             z_true_final = extractor.forward_encoder(sample_params)
             z_pred_final = extractor.forward_adaptation(sample_hist)
             final_loss = criterion(z_pred_final, z_true_final).item()

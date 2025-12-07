@@ -23,6 +23,7 @@ class RMAExtractor(BaseFeaturesExtractor):
         adaptation_embedding_dim: int = 8,
         # phase params
         phase: rma_phase = "phase_1",
+        device: str = "cuda",
     ):
         super().__init__(observation_space, observation_size + embedding_dim)
 
@@ -30,29 +31,32 @@ class RMAExtractor(BaseFeaturesExtractor):
         self.state_action_size = state_action_size
         self.lookback_steps = lookback_steps
         self.phase = phase
-
+        self.device = device
         self.rma_env_vector_size = env_vector_size
 
         self.rma_embedding = nn.Sequential(
-            nn.Linear(env_vector_size, embedding_hidden_dim),
+            nn.Linear(env_vector_size, embedding_hidden_dim, device=device),
             nn.ReLU(),
-            nn.Linear(embedding_hidden_dim, embedding_hidden_dim),
+            nn.Linear(embedding_hidden_dim, embedding_hidden_dim, device=device),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(embedding_hidden_dim, embedding_dim),
+            nn.Linear(embedding_hidden_dim, embedding_dim, device=device),
             nn.Tanh(),
         )
+        self.rma_embedding.to(device)
 
         # gets applied to each state action pair in the buffer
         self.adaptation_embedding = nn.Sequential(
-            nn.Linear(state_action_size, adaptation_hidden_dim),
+            nn.Linear(state_action_size, adaptation_hidden_dim, device=device),
             nn.ReLU(),
-            nn.Linear(adaptation_hidden_dim, adaptation_hidden_dim),
+            nn.Linear(adaptation_hidden_dim, adaptation_hidden_dim, device=device),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(adaptation_hidden_dim, adaptation_embedding_dim),
+            nn.Linear(adaptation_hidden_dim, adaptation_embedding_dim, device=device),
             nn.Tanh(),
         )
+        self.adaptation_embedding.to(device)
+
         # Then, a 3-layer 1-D CNN
         # convolves the representations across the time dimension to
         # capture temporal correlations in the input. The input channel
@@ -69,16 +73,25 @@ class RMAExtractor(BaseFeaturesExtractor):
 
         # takes in [batch, size, seqs] and outputs [batch, embedding_dim]
         self.output_cnns = nn.Sequential(
-            nn.Conv1d(num_channels, num_channels, kernel_size=8, stride=4),
+            nn.Conv1d(
+                num_channels, num_channels, kernel_size=8, stride=4, device=device
+            ),
             nn.ReLU(),
-            nn.Conv1d(num_channels, num_channels, kernel_size=5, stride=1),
+            nn.Conv1d(
+                num_channels, num_channels, kernel_size=5, stride=1, device=device
+            ),
             nn.ReLU(),
-            nn.Conv1d(num_channels, num_channels, kernel_size=5, stride=1),
+            nn.Conv1d(
+                num_channels, num_channels, kernel_size=5, stride=1, device=device
+            ),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(flattened_size, embedding_dim),  # project to embedding_dim
+            nn.Linear(
+                flattened_size, embedding_dim, device=device
+            ),  # project to embedding_dim
             nn.Tanh(),
         )
+        self.output_cnns.to(device)
 
     def forward_encoder(self, env_vector: torch.Tensor) -> torch.Tensor:
         """
@@ -88,7 +101,13 @@ class RMAExtractor(BaseFeaturesExtractor):
         Returns:
             embedding: Latent embedding z [batch_size, embedding_dim]
         """
-        return self.rma_embedding(env_vector)
+        # print(f"env_vector device: {env_vector.device}")
+        # print(f"rma_embedding device: {self.rma_embedding[0].weight.device}")
+        # print(f"self.device: {self.device}")
+        input_device = env_vector.device
+        env_vector = env_vector.to(self.device)
+        embedding = self.rma_embedding(env_vector)
+        return embedding.to(input_device)
 
     def forward_adaptation(self, state_action_pairs: torch.Tensor) -> torch.Tensor:
         """
@@ -101,6 +120,9 @@ class RMAExtractor(BaseFeaturesExtractor):
         Returns:
             embedding: Estimated latent embedding z_hat [batch_size, embedding_dim]
         """
+        input_device = state_action_pairs.device
+        state_action_pairs = state_action_pairs.to(self.device)
+
         # Handle both flattened and structured input
         if state_action_pairs.dim() == 2:
             batch_size = state_action_pairs.shape[0]
@@ -115,9 +137,13 @@ class RMAExtractor(BaseFeaturesExtractor):
         )
         adaptation_embeddings_B_AE_L = adaptation_embeddings_B_L_AE.transpose(1, 2)
         adaptation_estimate_B_E = self.output_cnns(adaptation_embeddings_B_AE_L)
-        return adaptation_estimate_B_E
+
+        return adaptation_estimate_B_E.to(input_device)
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        input_device = obs.device
+        obs = obs.to(self.device)
+
         if self.phase == "phase_1":
             # obs is of shape [batch, observation_size + rma_env_vector_size]
             assert obs.shape[1] == self.observation_size + self.rma_env_vector_size
@@ -129,7 +155,7 @@ class RMAExtractor(BaseFeaturesExtractor):
 
             real_obs = obs[:, : self.observation_size]
 
-            return torch.cat([real_obs, embedding], dim=1)
+            return torch.cat([real_obs, embedding], dim=1).to(input_device)
 
         elif self.phase == "phase_2":
             # obs is of shape [batch, observation_size + state_action_size*lookback_steps]
@@ -144,4 +170,6 @@ class RMAExtractor(BaseFeaturesExtractor):
 
             real_obs = obs[:, : self.observation_size]
 
-            return torch.cat([real_obs, adaptation_estimate_B_E], dim=1)
+            return torch.cat([real_obs, adaptation_estimate_B_E], dim=1).to(
+                input_device
+            )
