@@ -150,7 +150,6 @@ def main():
         #     warm_wrapper.train(10000)
         #     warm_wrapper.save()
         #     policy_wrapper.policy.policy = warm_wrapper.policy
-        policy_wrapper.train(args.timesteps)
         if args.policy == "rma":
             # RMA uses custom two-phase training
             policy_wrapper.train(
