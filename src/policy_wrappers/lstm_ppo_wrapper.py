@@ -19,6 +19,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import plot_results
 from stable_baselines3.common import results_plotter
 from sb3_contrib import RecurrentPPO
+import torch
 
 
 class LSTM_PPO_Wrapper(PolicyWrapper):

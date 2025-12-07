@@ -296,7 +296,7 @@ class TrainDagger:
     def training_step(
         self,
         batch_size,
-        ent_weight: float = 1e-3,
+        ent_weight: float = 1e-2,
         l2_weight: float = 0.0,
     ):
         """
@@ -328,24 +328,19 @@ class TrainDagger:
         predicted_action_distrib, _ = self.policy.get_distribution(
             obs=states, lstm_states=pol_states, episode_starts=episode_starts  # type: ignore[arg-type]
         )
-        loss = self.loss_fn(
-            predicted_action_distrib.get_actions().squeeze(), actions.squeeze()
+        neglogprob = -1 * predicted_action_distrib.log_prob(actions).mean()
+        ent_loss = -ent_weight * (
+            entropy.mean()
+            if (entropy := predicted_action_distrib.entropy()) is not None
+            else 0
         )
-        loss.backward()
-        # log_prob = log_prob.mean()
-        # entropy = entropy.mean() if entropy is not None else None
 
         # l2_norms = [torch.sum(torch.square(w)) for w in self.policy.parameters()]
-        # l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
-        # # # sum of list defaults to float(0) if len == 0.
-        # assert isinstance(l2_norm, torch.Tensor)
-
-        # ent_loss = -ent_weight * (entropy if entropy is not None else torch.zeros(1))
-        # neglogp = -log_prob
-        # print(neglogp)
+        # l2_norm = sum(l2_norms) / 2
         # l2_loss = l2_weight * l2_norm
-        # loss = neglogp + ent_loss + l2_loss
-        # loss.backward()
+        loss = neglogprob + ent_loss
+        loss.backward()
+
         self.optimizer.step()
 
         return loss.detach().cpu().item()
