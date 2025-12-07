@@ -136,7 +136,6 @@ class BuggyCourseEnv(gym.Env):
         # ------------------------------------------------------
         maxlen = int(DELAY_TIME // self.dt)
         self.steer_queue = deque([0] * maxlen, maxlen=maxlen)
-        self.steer_noise = lambda: np.random.normal(loc=self.steer_offset, scale=self.steer_slop)
 
         # Visualization
         self.fig = None
@@ -434,11 +433,7 @@ class BuggyCourseEnv(gym.Env):
         self.prev_dist = 0.0
         self.step_count = 0
 
-        self.steer_offset = random.uniform(0, 5) * (np.pi / 180)  # Steering offset (rad)
-        self.steer_slop = random.uniform(0, 2) * (np.pi / (180))  # Variance in steering
-        self.cornering_stiffness = random.randint(2000, 3500)  # N/rad
-        self.mu_friction = random.uniform(0.65, 0.99)
-        self.course_slope = random.uniform(1, 3) * (np.pi / 180)  # 1 degree constant slope assumed
+        self._sample_domain_randomization_state()
 
         if self.rma:
             self._init_rma()
@@ -446,6 +441,24 @@ class BuggyCourseEnv(gym.Env):
         obs, rma_obs = self._get_obs()
 
         return rma_obs, self._get_info()
+
+    def _sample_domain_randomization_state(self) -> None:
+        """
+        Samples a domain randomization state
+        """
+        self.steer_offset = random.uniform(0, 5) * (
+            np.pi / 180
+        )  # Steering offset (rad)
+        self.steer_slop = random.uniform(0, 2) * (np.pi / (180))  # Variance in steering
+        self.cornering_stiffness = random.randint(2000, 3500)  # N/rad
+        self.mu_friction = random.uniform(0.65, 0.99)
+        self.course_slope = random.uniform(1, 3) * (
+            np.pi / 180
+        )  # 1 degree constant slope assumed
+
+        self.steer_noise = lambda: np.random.normal(
+            loc=self.steer_offset, scale=self.steer_slop
+        )
 
     def _dynamics(self, state: np.ndarray, control: np.ndarray, constants: np.ndarray):
         """
@@ -626,11 +639,9 @@ class BuggyCourseEnv(gym.Env):
         return rma_obs, reward, self.terminated, truncated, self._get_info()
 
     def _get_env_hyperparams(self) -> np.ndarray:
-        # TODO include current domain randomization state
-        # TODO - returns vector of size self.env_vector_size
+        # include current domain randomization state and returns vector of size self.env_vector_size
         return np.array(
             [
-                DELAY_TIME,
                 self.steer_offset,
                 self.steer_slop,
                 self.cornering_stiffness,

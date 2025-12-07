@@ -64,9 +64,7 @@ class RMA_PPO_Wrapper(PolicyWrapper):
 
         # Get env_vector_size from the environment
         # TODO: This should be retrieved from the actual environment once domain randomization is implemented
-        self.env_vector_size = (
-            6  # Placeholder until domain randomization is implemented
-        )
+        self.env_vector_size = 5  # current domain randomization state
 
         # Current phase tracking
         self.current_phase: rma_phase = "phase_1"
