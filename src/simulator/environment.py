@@ -69,7 +69,7 @@ class BuggyCourseEnv(gym.Env):
         left_curb_path: str = "src/util/left_curb.json",
         right_curb_path: str = "src/util/right_curb.json",
         render_every_n_steps: int = 5,
-        include_pos_in_obs: bool = True,
+        include_pos_in_obs: bool = False,
         rma_config: Optional[RMAConfig] = None,
     ):
         """

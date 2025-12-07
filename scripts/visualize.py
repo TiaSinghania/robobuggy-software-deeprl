@@ -21,7 +21,7 @@ def visualize_environment(
     render_every_n_steps=10,
     dir="",
     rma_phase: rma_phase = None,
-    include_pos_in_obs: bool = True,
+    include_pos_in_obs: bool = False,
 ):
     """Run the buggy environment with visualization using env.render().
 
@@ -126,7 +126,7 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
         env_kwargs={
             "rate": 20,
             "render_every_n_steps": 0,
-            "include_pos_in_obs": True,
+            "include_pos_in_obs": False,
         },
     )
 
@@ -172,7 +172,7 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
     print("All rollouts complete. Generating plot...")
 
     # Create a dummy environment to access static map data (curbs, trajectory)
-    plot_env = BuggyCourseEnv(rate=20, render_every_n_steps=0, include_pos_in_obs=True)
+    plot_env = BuggyCourseEnv(rate=20, render_every_n_steps=0, include_pos_in_obs=False)
 
     # Plotting
     fig, ax = plt.subplots(figsize=(12, 8))
