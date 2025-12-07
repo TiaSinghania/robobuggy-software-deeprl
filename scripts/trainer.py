@@ -15,12 +15,16 @@ from src.policy_wrappers.stanley_wrapper import Stanley_Wrapper
 from src.policy_wrappers.dagger_wrapper import DAgger_Wrapper
 from src.policy_wrappers.lstm_ppo_wrapper import LSTM_PPO_Wrapper
 from src.policy_wrappers.recurrent_dagger_wrapper import RecurrentDaggerWrapper
+from src.policy_wrappers.rma_ppo_wrapper import RMA_PPO_Wrapper
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--policy", type=str, default="random", help="What policy to run"
+        "--policy",
+        type=str,
+        default="random",
+        help="What policy to run (random, ppo, expert, dagger, rma)",
     )
     parser.add_argument(
         "--train",
@@ -32,7 +36,19 @@ def main():
         "-t",
         type=int,
         default=int(1e3),
-        help="Number of timesteps to train the model for",
+        help="Number of timesteps to train the model for (or Phase 1 timesteps for RMA)",
+    )
+    parser.add_argument(
+        "--collection-steps",
+        type=int,
+        default=10000,
+        help="Number of steps to collect data for RMA Phase 2 (adaptation module).",
+    )
+    parser.add_argument(
+        "--adaptation-epochs",
+        type=int,
+        default=50,
+        help="Number of epochs to train the adaptation module for RMA Phase 2.",
     )
     parser.add_argument(
         "--dirname",
@@ -68,20 +84,19 @@ def main():
     else:
         dirpath = f"./logs/{args.dirname}"
 
-    # env = gym.make(
-    #     "BuggyCourseEnv-v1", rate=20, max_episode_steps=4000, include_pos_in_obs=True
-    # )
-
-    env = make_vec_env(
-        "BuggyCourseEnv-v1",
-        n_envs=10,
-        vec_env_cls=SubprocVecEnv,
-        env_kwargs={
-            "rate": 20,
-            "max_episode_steps": 4000,
-            "include_pos_in_obs": True,
-        },
-    )
+    # Create standard env for non-RMA policies
+    env = None
+    if args.policy not in ["rma"]:
+        env = make_vec_env(
+            "BuggyCourseEnv-v1",
+            n_envs=10,
+            vec_env_cls=SubprocVecEnv,
+            env_kwargs={
+                "rate": 20,
+                "max_episode_steps": 4000,
+                "include_pos_in_obs": False,
+            },
+        )
 
     policy_wrapper = None
     match args.policy:
@@ -110,34 +125,71 @@ def main():
                 env=env,
                 dirpath=dirpath,
             )
+        case "rma":
+            # RMA: Two-phase training
+            # Phase 1: Train encoder + policy end-to-end
+            # Phase 2: Freeze encoder/policy, train adaptation module
+            # Note: RMA wrapper creates its own env
+            policy_wrapper = RMA_PPO_Wrapper(
+                dirpath=dirpath,
+                n_envs=10,
+                rate=20,
+                include_pos_in_obs=False,
+            )
         case _:
             raise Exception("INVALID POLICY")
 
     if args.train:
-        if args.warm_start:
-            warm_wrapper = RecurrentDaggerWrapper(
-                reference_traj_path="src/util/buggycourse_safe.json",
-                policy=policy_wrapper.policy.policy,
-                env=env,
-                dirpath=dirpath,
-            )
-            warm_wrapper.train(10000)
-            warm_wrapper.save()
-            policy_wrapper.policy.policy = warm_wrapper.policy
+        # if args.warm_start:
+        #     warm_wrapper = RecurrentDaggerWrapper(
+        #         reference_traj_path="src/util/buggycourse_safe.json",
+        #         policy=policy_wrapper.policy.policy,
+        #         env=env,
+        #         dirpath=dirpath,
+        #     )
+        #     warm_wrapper.train(10000)
+        #     warm_wrapper.save()
+        #     policy_wrapper.policy.policy = warm_wrapper.policy
         policy_wrapper.train(args.timesteps)
+        if args.policy == "rma":
+            # RMA uses custom two-phase training
+            policy_wrapper.train(
+                timesteps=args.timesteps,
+                collection_steps=args.collection_steps,
+                adaptation_epochs=args.adaptation_epochs,
+            )
+        else:
+            policy_wrapper.train(args.timesteps)
         policy_wrapper.save()
 
     else:
-        policy_wrapper.load()
+        if args.policy == "rma":
+            # Load Phase 2 model if Phase 2 was trained, otherwise Phase 1
+            phase = "phase_2" if args.collection_steps > 0 else "phase_1"
+            policy_wrapper.load(phase=phase)
+        else:
+            policy_wrapper.load()
 
     if args.heatmap:
         visualize_heatmap(
             policy=policy_wrapper.policy, n_rollouts=args.heatmap_paths, dir=dirpath
         )
     else:
-        visualize_environment(
-            policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=1
-        )
+        if args.policy == "rma":
+            # RMA needs matching environment config
+            # Use phase_2 if trained, otherwise phase_1
+            phase = "phase_2" if args.collection_steps > 0 else "phase_1"
+            visualize_environment(
+                policy=policy_wrapper.policy,
+                dir=dirpath,
+                render_every_n_steps=1,
+                rma_phase=phase,
+                include_pos_in_obs=False,
+            )
+        else:
+            visualize_environment(
+                policy=policy_wrapper.policy, dir=dirpath, render_every_n_steps=1
+            )
 
 
 if __name__ == "__main__":

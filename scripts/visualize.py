@@ -13,22 +13,45 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 
 sys.path.append("scripts")
 
-from src.simulator.environment import BuggyCourseEnv
+from src.simulator.environment import BuggyCourseEnv, RMAConfig, rma_phase
 
 
 def visualize_environment(
-    policy: BaseAlgorithm, render_every_n_steps=10, dir="", record_video=True
+    policy: BaseAlgorithm,
+    render_every_n_steps=10,
+    dir="",
+    rma_phase: rma_phase = None,
+    include_pos_in_obs: bool = False,
 ):
-    """Run the buggy environment with visualization using env.render()."""
-    env = BuggyCourseEnv(
-        rate=20, render_every_n_steps=render_every_n_steps, include_pos_in_obs=True
-    )
+    """Run the buggy environment with visualization using env.render().
+
+    Args:
+        policy: The trained policy to visualize
+        render_every_n_steps: Render every N steps (lower = smoother but slower)
+        dir: Directory to save the output video
+        rma_phase: RMA phase ("phase_1" or "phase_2") if using RMA policy, None otherwise
+        include_pos_in_obs: Whether position is included in observations
+    """
+    env_kwargs = {
+        "rate": 20,
+        "render_every_n_steps": render_every_n_steps,
+        "include_pos_in_obs": include_pos_in_obs,
+    }
+
+    # Add RMA config if this is an RMA policy
+    if rma_phase is not None:
+        env_kwargs["rma_config"] = RMAConfig(
+            lookback_steps=50,
+            current_phase=rma_phase,
+        )
+
+    env = BuggyCourseEnv(**env_kwargs)
     env.render()
 
-    metadata = dict(title="Buggy Simulation", artist="Mehul Goel")
+    metadata = dict(title="Buggy Simulation", artist="tia")
 
     writer = FFMpegWriter(
-        fps=int(1 / (render_every_n_steps * env.dt)), metadata=metadata
+        fps=int(1 / (env.dt * render_every_n_steps)), metadata=metadata
     )
 
     os.makedirs(dir, exist_ok=True)
@@ -110,7 +133,7 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
         env_kwargs={
             "rate": 20,
             "render_every_n_steps": 0,
-            "include_pos_in_obs": True,
+            "include_pos_in_obs": False,
         },
     )
 
@@ -156,7 +179,7 @@ def visualize_heatmap(policy: BaseAlgorithm, n_rollouts: int, dir: str):
     print("All rollouts complete. Generating plot...")
 
     # Create a dummy environment to access static map data (curbs, trajectory)
-    plot_env = BuggyCourseEnv(rate=20, render_every_n_steps=0, include_pos_in_obs=True)
+    plot_env = BuggyCourseEnv(rate=20, render_every_n_steps=0, include_pos_in_obs=False)
 
     # Plotting
     fig, ax = plt.subplots(figsize=(12, 8))
