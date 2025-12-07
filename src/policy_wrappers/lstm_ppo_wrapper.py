@@ -18,6 +18,7 @@ from src.policy_wrappers.policy_wrapper import PolicyWrapper
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import plot_results
 from stable_baselines3.common import results_plotter
+from stable_baselines3.common.vec_env import VecNormalize
 from sb3_contrib import RecurrentPPO
 import torch
 
@@ -27,8 +28,7 @@ class LSTM_PPO_Wrapper(PolicyWrapper):
         super().__init__(**kwargs)
 
         # Monitor breaks with vec envs
-        # self.env = VecMonitor(self.env, self.dirpath + "/monitor.csv")
-        self.env = Monitor(self.env, self.dirpath + "/monitor.csv")
+        self.env = VecMonitor(VecNormalize(self.env), self.dirpath + "/monitor.csv")
         self.policy: RecurrentPPO = RecurrentPPO(
             "MlpLstmPolicy",
             self.env,
@@ -40,17 +40,17 @@ class LSTM_PPO_Wrapper(PolicyWrapper):
     def train(self, timesteps):
         # we have something called dirpath
         print("Training Reurrent PPO model...")
-        for name, param in self.policy.policy.named_parameters():
-            if "policy_net" in name or "actor" in name or "action_net" in name:
-                param.requires_grad = False
+        # for name, param in self.policy.policy.named_parameters():
+        #     if "policy_net" in name or "actor" in name or "action_net" in name:
+        #         param.requires_grad = False
 
-        self.policy.learn(total_timesteps=timesteps // 2)
+        # self.policy.learn(total_timesteps=timesteps // 2)
 
-        for name, param in self.policy.policy.named_parameters():
-            if "policy_net" in name or "actor" in name or "action_net" in name:
-                param.requires_grad = True
+        # for name, param in self.policy.policy.named_parameters():
+        #     if "policy_net" in name or "actor" in name or "action_net" in name:
+        #         param.requires_grad = True
 
-        self.policy.learn(total_timesteps=timesteps // 2)
+        self.policy.learn(total_timesteps=timesteps)
 
         print("Training complete.")
 

@@ -68,20 +68,20 @@ def main():
     else:
         dirpath = f"./logs/{args.dirname}"
 
-    env = gym.make(
-        "BuggyCourseEnv-v1", rate=20, max_episode_steps=4000, include_pos_in_obs=True
-    )
-
-    # env = make_vec_env(
-    #     "BuggyCourseEnv-v1",
-    #     n_envs=10,
-    #     vec_env_cls=SubprocVecEnv,
-    #     env_kwargs={
-    #         "rate": 20,
-    #         "max_episode_steps": 4000,
-    #         "include_pos_in_obs": True,
-    #     },
+    # env = gym.make(
+    #     "BuggyCourseEnv-v1", rate=20, max_episode_steps=4000, include_pos_in_obs=True
     # )
+
+    env = make_vec_env(
+        "BuggyCourseEnv-v1",
+        n_envs=10,
+        vec_env_cls=SubprocVecEnv,
+        env_kwargs={
+            "rate": 20,
+            "max_episode_steps": 4000,
+            "include_pos_in_obs": True,
+        },
+    )
 
     policy_wrapper = None
     match args.policy:
