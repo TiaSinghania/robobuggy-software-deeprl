@@ -41,6 +41,13 @@ DIST_AHEAD_MAX = 100
 # Randomized Arguments
 DELAY_TIME = 0.05  # s
 
+# Domain Randomization Ranges
+STEER_OFFSET_RANGE = (0, 5 * np.pi / 180)  # rad
+STEER_SLOP_RANGE = (0, 2 * np.pi / 180)  # rad
+CORNERING_STIFFNESS_RANGE = (2000, 3500)  # N/rad
+MU_FRICTION_RANGE = (0.65, 0.99)
+COURSE_SLOPE_RANGE = (1 * np.pi / 180, 3 * np.pi / 180)  # rad
+
 type rma_phase = Literal["phase_1", "phase_2"]
 
 
@@ -410,7 +417,10 @@ class BuggyCourseEnv(gym.Env):
         """
         Return environment info
         """
-        return {"pos": (self.sc.e_utm, self.sc.n_utm)}
+        info = {"pos": (self.sc.e_utm, self.sc.n_utm)}
+        if self.rma:
+            info["rma_buffer"] = list(self.rma_buffer)
+        return info
 
     def reset(self, seed: Optional[int] = None, **kwargs) -> tuple[np.ndarray, None]:
         """
@@ -440,21 +450,23 @@ class BuggyCourseEnv(gym.Env):
 
         obs, rma_obs = self._get_obs()
 
+        # Cache observation so we can pair it with the first action in step()
+        # This ensures we store (x_t, a_t) - the state FROM WHICH action was taken
+        self.last_obs = obs
+
         return rma_obs, self._get_info()
 
     def _sample_domain_randomization_state(self) -> None:
         """
         Samples a domain randomization state
         """
-        self.steer_offset = random.uniform(0, 5) * (
-            np.pi / 180
-        )  # Steering offset (rad)
-        self.steer_slop = random.uniform(0, 2) * (np.pi / (180))  # Variance in steering
-        self.cornering_stiffness = random.randint(2000, 3500)  # N/rad
-        self.mu_friction = random.uniform(0.65, 0.99)
-        self.course_slope = random.uniform(1, 3) * (
-            np.pi / 180
-        )  # 1 degree constant slope assumed
+        self.steer_offset = random.uniform(*STEER_OFFSET_RANGE)
+        self.steer_slop = random.uniform(*STEER_SLOP_RANGE)
+        self.cornering_stiffness = random.randint(
+            int(CORNERING_STIFFNESS_RANGE[0]), int(CORNERING_STIFFNESS_RANGE[1])
+        )
+        self.mu_friction = random.uniform(*MU_FRICTION_RANGE)
+        self.course_slope = random.uniform(*COURSE_SLOPE_RANGE)
 
         self.steer_noise = lambda: np.random.normal(
             loc=self.steer_offset, scale=self.steer_slop
@@ -615,6 +627,14 @@ class BuggyCourseEnv(gym.Env):
         """
         assert sc_steering_percentage.shape == (1,)
 
+        # Update RMA buffer BEFORE physics step using the state FROM WHICH we act.
+        # This stores (x_t, a_t) matching the RMA paper's (x_{t-1}, a_{t-1}) convention
+        # where the subscript indicates the timestep when the action was taken.
+        if self.rma:
+            self.rma_buffer.append(
+                np.concatenate([self.last_obs, sc_steering_percentage])
+            )
+
         self.sc.delta = self.steer_queue[0] + self.steer_noise()
         self.steer_queue.append(sc_steering_percentage[0] * self.steer_scale)
 
@@ -633,20 +653,25 @@ class BuggyCourseEnv(gym.Env):
 
         obs, rma_obs = self._get_obs()
 
-        if self.rma:
-            self.rma_buffer.append(np.concatenate([obs, sc_steering_percentage]))
+        # Cache observation for the next step's history entry
+        self.last_obs = obs
 
         return rma_obs, reward, self.terminated, truncated, self._get_info()
 
     def _get_env_hyperparams(self) -> np.ndarray:
         # include current domain randomization state and returns vector of size self.env_vector_size
+        # Normalize to [-1, 1] range for the neural network
+        def norm(val, range_val):
+            min_v, max_v = range_val
+            return 2 * (val - min_v) / (max_v - min_v) - 1
+
         return np.array(
             [
-                self.steer_offset,
-                self.steer_slop,
-                self.cornering_stiffness,
-                self.mu_friction,
-                self.course_slope,
+                norm(self.steer_offset, STEER_OFFSET_RANGE),
+                norm(self.steer_slop, STEER_SLOP_RANGE),
+                norm(self.cornering_stiffness, CORNERING_STIFFNESS_RANGE),
+                norm(self.mu_friction, MU_FRICTION_RANGE),
+                norm(self.course_slope, COURSE_SLOPE_RANGE),
             ],
             dtype=np.float32,
         )

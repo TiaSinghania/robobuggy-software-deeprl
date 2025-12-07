@@ -29,7 +29,7 @@ class PolicyWrapper(ABC):
 
         Args:
             timesteps: Number of timesteps to train for (or primary phase timesteps for multi-phase training)
-            **kwargs: Additional training parameters (e.g., phase2_timesteps for RMA)
+            **kwargs: Additional training parameters (e.g., collection_steps, adaptation_epochs for RMA)
         """
         pass
 

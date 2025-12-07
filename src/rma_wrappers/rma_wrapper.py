@@ -80,6 +80,43 @@ class RMAExtractor(BaseFeaturesExtractor):
             nn.Tanh(),
         )
 
+    def forward_encoder(self, env_vector: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for Phase 1 encoder.
+        Args:
+            env_vector: Environment parameters [batch_size, env_vector_size]
+        Returns:
+            embedding: Latent embedding z [batch_size, embedding_dim]
+        """
+        return self.rma_embedding(env_vector)
+
+    def forward_adaptation(self, state_action_pairs: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for Phase 2 adaptation module.
+        Args:
+            state_action_pairs: History of state-action pairs
+                                [batch_size, lookback_steps * state_action_size]
+                                OR
+                                [batch_size, lookback_steps, state_action_size]
+        Returns:
+            embedding: Estimated latent embedding z_hat [batch_size, embedding_dim]
+        """
+        # Handle both flattened and structured input
+        if state_action_pairs.dim() == 2:
+            batch_size = state_action_pairs.shape[0]
+            state_action_pairs_B_L_S = state_action_pairs.reshape(
+                batch_size, self.lookback_steps, self.state_action_size
+            )
+        else:
+            state_action_pairs_B_L_S = state_action_pairs
+
+        adaptation_embeddings_B_L_AE = self.adaptation_embedding(
+            state_action_pairs_B_L_S
+        )
+        adaptation_embeddings_B_AE_L = adaptation_embeddings_B_L_AE.transpose(1, 2)
+        adaptation_estimate_B_E = self.output_cnns(adaptation_embeddings_B_AE_L)
+        return adaptation_estimate_B_E
+
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         if self.phase == "phase_1":
             # obs is of shape [batch, observation_size + rma_env_vector_size]
@@ -88,7 +125,7 @@ class RMAExtractor(BaseFeaturesExtractor):
             env_vector = obs[:, self.observation_size :]
             assert env_vector.shape[1] == self.rma_env_vector_size
 
-            embedding = self.rma_embedding(env_vector)
+            embedding = self.forward_encoder(env_vector)
 
             real_obs = obs[:, : self.observation_size]
 
@@ -102,20 +139,8 @@ class RMAExtractor(BaseFeaturesExtractor):
             )
 
             state_action_pairs = obs[:, self.observation_size :]
-            assert (
-                state_action_pairs.shape[1]
-                == self.state_action_size * self.lookback_steps
-            )
 
-            # split into [batch_size, lookback_steps, state_action_size]
-            state_action_pairs_B_L_S = state_action_pairs.reshape(
-                obs.shape[0], self.lookback_steps, self.state_action_size
-            )
-            adaptation_embeddings_B_L_AE = self.adaptation_embedding(
-                state_action_pairs_B_L_S
-            )
-            adaptation_embeddings_B_AE_L = adaptation_embeddings_B_L_AE.transpose(1, 2)
-            adaptation_estimate_B_E = self.output_cnns(adaptation_embeddings_B_AE_L)
+            adaptation_estimate_B_E = self.forward_adaptation(state_action_pairs)
 
             real_obs = obs[:, : self.observation_size]
 

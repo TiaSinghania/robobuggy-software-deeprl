@@ -37,10 +37,16 @@ def main():
         help="Number of timesteps to train the model for (or Phase 1 timesteps for RMA)",
     )
     parser.add_argument(
-        "--phase2-timesteps",
+        "--collection-steps",
         type=int,
-        default=0,
-        help="Number of timesteps for RMA Phase 2 (adaptation module). If 0, only Phase 1 is trained.",
+        default=10000,
+        help="Number of steps to collect data for RMA Phase 2 (adaptation module).",
+    )
+    parser.add_argument(
+        "--adaptation-epochs",
+        type=int,
+        default=50,
+        help="Number of epochs to train the adaptation module for RMA Phase 2.",
     )
     parser.add_argument(
         "--dirname",
@@ -122,7 +128,8 @@ def main():
             # RMA uses custom two-phase training
             policy_wrapper.train(
                 timesteps=args.timesteps,
-                phase2_timesteps=args.phase2_timesteps,
+                collection_steps=args.collection_steps,
+                adaptation_epochs=args.adaptation_epochs,
             )
         else:
             policy_wrapper.train(args.timesteps)
@@ -131,7 +138,7 @@ def main():
     else:
         if args.policy == "rma":
             # Load Phase 2 model if Phase 2 was trained, otherwise Phase 1
-            phase = "phase_2" if args.phase2_timesteps > 0 else "phase_1"
+            phase = "phase_2" if args.collection_steps > 0 else "phase_1"
             policy_wrapper.load(phase=phase)
         else:
             policy_wrapper.load()
@@ -144,7 +151,7 @@ def main():
         if args.policy == "rma":
             # RMA needs matching environment config
             # Use phase_2 if trained, otherwise phase_1
-            phase = "phase_2" if args.phase2_timesteps > 0 else "phase_1"
+            phase = "phase_2" if args.collection_steps > 0 else "phase_1"
             visualize_environment(
                 policy=policy_wrapper.policy,
                 dir=dirpath,

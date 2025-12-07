@@ -11,6 +11,12 @@ from src.policy_wrappers.policy_wrapper import PolicyWrapper
 from src.simulator.environment import RMAConfig, rma_phase
 from src.rma_wrappers.rma_wrapper import RMAExtractor
 
+import torch
+import numpy as np
+from torch.utils.data import TensorDataset, DataLoader
+from torch.optim import Adam
+from torch.nn import MSELoss
+
 
 class RMA_PPO_Wrapper(PolicyWrapper):
     """
@@ -253,15 +259,180 @@ class RMA_PPO_Wrapper(PolicyWrapper):
             for param in module.parameters():
                 param.requires_grad = True
 
-    def train(self, timesteps: int, phase2_timesteps: int = 0, **kwargs) -> None:
+    def _collect_phase2_data(self, collection_steps: int):
+        """
+        Collect data for Phase 2 training using the Phase 1 policy.
+        Returns:
+            env_params: Tensor of environment parameters [N, env_vector_size]
+            history: Tensor of state-action history [N, lookback_steps, state_action_size]
+        """
+        print(f"Collecting {collection_steps} steps of data for Phase 2 training...")
+
+        # Ensure we are in Phase 1 (privileged access available)
+        if self.current_phase != "phase_1":
+            self._switch_env_phase("phase_1")
+
+        env_params_list = []
+        history_list = []
+
+        obs = self.env.reset()
+
+        for i in range(collection_steps):
+            # Use Phase 1 policy (Encoder + MLP)
+            action, _ = self.policy.predict(obs, deterministic=True)
+
+            # Step the environment
+            obs, rewards, dones, infos = self.env.step(action)
+
+            # Extract data from info dicts (from all parallel envs)
+            for i, (info, o, done) in enumerate(zip(infos, obs, dones)):
+                # CRITICAL: Skip saving data if done=True
+                # stable_baselines3 VecEnv auto-resets when done=True.
+                # The returned 'o' (obs) is the initial observation of the NEW episode (new env params).
+                # The returned 'info' is from the LAST step of the OLD episode (old history).
+                # Pairing old history with new env params creates a mismatch/hallucination in the dataset.
+                if done:
+                    continue
+
+                # 1. Get environment parameters (ground truth)
+                # In Phase 1, env params are the last part of the observation
+                # Based on environment.py: rma_obs = [obs, env_hyperparams]
+                env_param = o[self.base_obs_size :]
+                env_params_list.append(env_param)
+
+                # 2. Get history (inputs to adaptation module)
+                if "rma_buffer" in info:
+                    hist = np.array(info["rma_buffer"], dtype=np.float32)
+                    history_list.append(hist)
+                else:
+                    print("Warning: rma_buffer not found in info dict")
+
+            if (i + 1) % 1000 == 0:
+                print(f"  Collected {i + 1} steps...")
+
+        env_params = torch.tensor(np.array(env_params_list), device=self.device)
+        history = torch.tensor(np.array(history_list), device=self.device)
+
+        print(
+            f"Collected data shapes: Params {env_params.shape}, History {history.shape}"
+        )
+        return env_params, history
+
+    def _train_adaptation_module(
+        self, env_params, history, epochs: int = 50, batch_size: int = 256
+    ):
+        """
+        Train the adaptation module via Supervised Learning.
+        """
+        print(f"Training adaptation module for {epochs} epochs...")
+        print(f"  Dataset size: {len(env_params):,} samples")
+        print(f"  Batch size: {batch_size}")
+        print(f"  Batches per epoch: {len(env_params) // batch_size}")
+
+        # Create dataset and dataloader
+        dataset = TensorDataset(history, env_params)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+        # Get the feature extractor (Phase 2 policy's extractor)
+        extractor = self.policy.policy.features_extractor
+
+        # Optimizer for adaptation module only
+        # Note: We already froze other parameters in _transition_to_phase2
+        params = list(extractor.adaptation_embedding.parameters()) + list(
+            extractor.output_cnns.parameters()
+        )
+        optimizer = Adam(params, lr=1e-3)
+        criterion = MSELoss()
+
+        extractor.train()
+
+        # Compute initial loss before training
+        with torch.no_grad():
+            sample_hist = history[:batch_size].to(self.device)
+            sample_params = env_params[:batch_size].to(self.device)
+            z_true_init = extractor.forward_encoder(sample_params)
+            z_pred_init = extractor.forward_adaptation(sample_hist)
+            initial_loss = criterion(z_pred_init, z_true_init).item()
+            print(f"  Initial loss (before training): {initial_loss:.6f}")
+            print(
+                f"  Ground truth embedding stats: mean={z_true_init.mean():.4f}, std={z_true_init.std():.4f}"
+            )
+            print("-" * 50)
+
+        best_loss = float("inf")
+        for epoch in range(epochs):
+            total_loss = 0
+            num_batches = 0
+            for batch_hist, batch_params in dataloader:
+                batch_hist = batch_hist.to(self.device)
+                batch_params = batch_params.to(self.device)
+
+                optimizer.zero_grad()
+
+                # 1. Get Ground Truth Embedding from frozen Encoder (using env params)
+                with torch.no_grad():
+                    z_true = extractor.forward_encoder(batch_params)
+
+                # 2. Get Predicted Embedding from Adaptation Module (using history)
+                z_pred = extractor.forward_adaptation(batch_hist)
+
+                # 3. MSE Loss
+                loss = criterion(z_pred, z_true)
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+                num_batches += 1
+
+            avg_loss = total_loss / num_batches
+            best_loss = min(best_loss, avg_loss)
+
+            # Print every epoch for visibility
+            print(
+                f"  Epoch {epoch + 1:3d}/{epochs} | Loss: {avg_loss:.6f} | Best: {best_loss:.6f}"
+            )
+
+        # Final evaluation
+        extractor.eval()
+        with torch.no_grad():
+            sample_hist = history[:batch_size].to(self.device)
+            sample_params = env_params[:batch_size].to(self.device)
+            z_true_final = extractor.forward_encoder(sample_params)
+            z_pred_final = extractor.forward_adaptation(sample_hist)
+            final_loss = criterion(z_pred_final, z_true_final).item()
+
+            # Compute correlation between predicted and true embeddings
+            z_true_np = z_true_final.cpu().numpy()
+            z_pred_np = z_pred_final.cpu().numpy()
+            correlations = []
+            for dim in range(z_true_np.shape[1]):
+                corr = np.corrcoef(z_true_np[:, dim], z_pred_np[:, dim])[0, 1]
+                correlations.append(corr)
+            avg_corr = np.mean(correlations)
+
+            print("-" * 50)
+            print(f"  Final loss: {final_loss:.6f} (started at {initial_loss:.6f})")
+            print(f"  Loss reduction: {(1 - final_loss/initial_loss) * 100:.1f}%")
+            print(f"  Avg embedding correlation (pred vs true): {avg_corr:.4f}")
+            print(f"  Per-dim correlations: {[f'{c:.3f}' for c in correlations]}")
+
+        print("Adaptation module training complete.")
+
+    def train(
+        self,
+        timesteps: int,
+        collection_steps: int = 10000,
+        adaptation_epochs: int = 50,
+        **kwargs,
+    ) -> None:
         """
         Train RMA in two phases.
 
         Args:
             timesteps: Number of timesteps for Phase 1 (encoder + policy)
-            phase2_timesteps: Number of timesteps for Phase 2 (adaptation module)
-                              If 0, only Phase 1 is trained.
-            **kwargs: Additional arguments (unused, for interface compatibility)
+            collection_steps: Steps to run Phase 1 policy to collect data for Phase 2
+            adaptation_epochs: Number of epochs to train the adaptation module
+            **kwargs: Additional arguments
         """
         phase1_timesteps = timesteps
         # Phase 1: Train encoder + policy
@@ -288,37 +459,24 @@ class RMA_PPO_Wrapper(PolicyWrapper):
         except Exception as e:
             print(f"Could not plot Phase 1 results: {e}")
 
-        # Phase 2: Train adaptation module (if requested)
-        if phase2_timesteps > 0:
-            self._transition_to_phase2()
-
+        # Phase 2: Supervised Learning for Adaptation Module
+        if collection_steps > 0:
             print("\n" + "=" * 60)
-            print(
-                f"PHASE 2: Training adaptation module ({phase2_timesteps:,} timesteps)"
-            )
+            print(f"PHASE 2: Training adaptation module (Supervised)")
             print("=" * 60)
 
-            # Reset timesteps for fresh Phase 2 metrics
-            self.policy.learn(
-                total_timesteps=phase2_timesteps, reset_num_timesteps=True
-            )
+            # 1. Collect Data using Phase 1 Policy
+            env_params, history = self._collect_phase2_data(collection_steps)
+
+            # 2. Transition to Phase 2 (Architecture switch)
+            self._transition_to_phase2()
+
+            # 3. Train Adaptation Module
+            self._train_adaptation_module(env_params, history, epochs=adaptation_epochs)
 
             # Save Phase 2 checkpoint
             self.policy.save(f"{self.dirpath}/model_phase2")
             print(f"Phase 2 model saved to {self.dirpath}/model_phase2")
-
-            # Plot Phase 2 results
-            try:
-                plot_results(
-                    [self.dirpath + "/"],
-                    phase2_timesteps,
-                    results_plotter.X_TIMESTEPS,
-                    "RMA PPO Phase 2",
-                )
-                plt.savefig(self.dirpath + "/rma_ppo_phase2_rewards.png")
-                plt.close()
-            except Exception as e:
-                print(f"Could not plot Phase 2 results: {e}")
 
         print("\n" + "=" * 60)
         print("Training complete!")
