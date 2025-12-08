@@ -1,0 +1,14 @@
+Using cpu device
+dict_keys(['log_std', 'mlp_extractor.policy_net.0.weight', 'mlp_extractor.policy_net.0.bias', 'mlp_extractor.policy_net.2.weight', 'mlp_extractor.policy_net.2.bias', 'mlp_extractor.value_net.0.weight', 'mlp_extractor.value_net.0.bias', 'mlp_extractor.value_net.2.weight', 'mlp_extractor.value_net.2.bias', 'action_net.weight', 'action_net.bias', 'value_net.weight', 'value_net.bias', 'lstm_actor.weight_ih_l0', 'lstm_actor.weight_hh_l0', 'lstm_actor.bias_ih_l0', 'lstm_actor.bias_hh_l0', 'lstm_critic.weight_ih_l0', 'lstm_critic.weight_hh_l0', 'lstm_critic.bias_ih_l0', 'lstm_critic.bias_hh_l0'])
+Training Reurrent PPO model...
+----------------------------------
+| rollout/           |           |
+|    ep_len_mean     | 68        |
+|    ep_rew_mean     | -9.99e+03 |
+| time/              |           |
+|    fps             | 7644      |
+|    iterations      | 1         |
+|    time_elapsed    | 0         |
+|    total_timesteps | 1280      |
+----------------------------------
+Training complete.
